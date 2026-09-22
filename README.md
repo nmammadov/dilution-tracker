@@ -105,32 +105,34 @@ Live mode is best-effort. A shelf form on the filing list, without a parsed doll
 
 ## Popular tickers
 
-The home page **Popular** list is a static seed of DilutionTracker-style popular names. It is not scraped from that site, and Splitline is not affiliated with it. The list lives in `src/lib/popular.ts`.
+The home page **Popular** list is the 30 DilutionTracker Open Access names checked on 2026-09-22. It is a static seed in `src/lib/popular.ts`. It is not scraped at runtime, and Splitline is not affiliated with that site.
 
-On 2026-09-22 each working symbol was checked against the SEC company ticker file (`https://www.sec.gov/files/company_tickers.json`). Symbols with no current ticker were left off the chips and recorded in `SKIPPED_POPULAR` with the reason. `MULN` is the old symbol for Bollinger Innovations; the working chip is `BINI`. `MAXN` was in Nasdaq delisting proceedings and the ticker file lists `MAXNQ`, so `MAXN` is not linked.
+All 30 symbols were in the SEC company ticker file that day (`https://www.sec.gov/files/company_tickers.json`). `QNME` is labeled **Quanome Technologies** because EDGAR’s former-name record shows Lakeside Holding Ltd only through July 10, 2026.
 
-Opening a chip uses the same `/ticker/[symbol]` page as search: five High/Low scores and the Why High/Low evidence panels. DCOY uses the curated fixture. Every other popular name is scored from live EDGAR (submissions, company facts, and the latest 10-Q or 10-K, plus an S-3 or 424B5 when one is on file). No dollar amount in that live path is invented. If the parser cannot read a capacity, the input stays blank and does not raise a score.
+Opening a chip uses the same `/ticker/[symbol]` page as search: five High/Low scores and the Why High/Low evidence panels. DCOY uses the curated fixture. Every other popular name is scored from live EDGAR: submissions, company facts, and the latest 10-Q, 10-K, 20-F, or 40-F, plus an S-3 or 424B5 when one is on file. No dollar amount in that path is invented. If the parser cannot read a capacity, the input stays blank and does not raise a score.
+
+IMCC, SVRE, and GELS have no `us-gaap` cash facts, so dollar cash stays blank. Their Cash Need score still follows going-concern language when the latest 20-F or 40-F states it. A zero `EntityCommonStockSharesOutstanding` fact is ignored in favor of the newest positive share count.
 
 To refresh the list:
 
-1. Download `https://www.sec.gov/files/company_tickers.json` and drop any symbol that is no longer in it.
+1. Replace `POPULAR_TICKERS` with the names you want, then drop any symbol missing from `https://www.sec.gov/files/company_tickers.json`.
 2. Do not add a fixture unless you are copying a figure from a specific filing, with the accession or EDGAR URL in `src/lib/fixtures.ts`.
-3. Re-run a few names through `/api/ticker/[symbol]` and update the sample table below if the High/Low mix changed.
+3. Re-run the names through `/api/ticker/[symbol]` and update the sample table below if the High/Low mix changed.
 
-Sample scored on 2026-09-22. DCOY uses the fixture. The other rows are the live parser. “Drove it” lists component scores that are High. Overall follows the published rule. Live mode often leaves shelf and ATM dollar capacity unparsed, so Offering Ability stays Low unless a filing states a figure the parser can read. That is a parser limit, not a claim that no shelf exists.
+Sample scored on 2026-09-22. DCOY uses the fixture. The other rows are the live parser. “Drove it” lists component scores that are High. Overall follows the published rule. Live mode often leaves shelf and ATM dollar capacity unparsed, so Offering Ability stays Low unless a filing states a figure the parser can read.
 
 | Ticker | Overall | What drove it (High components) |
 | --- | --- | --- |
 | DCOY | High | Offering Ability, Overhead Supply, Historical, Cash Need |
-| GME | Low | Historical |
-| CNSP | Low | Historical |
-| OPTT | Low | Historical, Cash Need |
-| MLGO | Low | Historical |
-| EOSE | Low | Historical, Cash Need |
-| POET | Low | Historical |
-| HOLO | Low | Historical |
-| SCLX | Low | Historical, Cash Need |
-| ASNS | Low | Historical, Cash Need |
+| RAIN | High | Offering Ability, Historical, Cash Need |
+| GRML | Low | Historical, Cash Need |
+| QNME | Low | Historical, Cash Need |
+| VKTX | Low | Cash Need |
+| JTAI | Low | Offering Ability, Historical |
+| TPST | Low | Historical, Cash Need |
+| LHSW | Low | Historical, Cash Need |
+| MASK | Low | Cash Need |
+| STI | Low | Historical, Cash Need |
 
 ## DCOY fixture
 

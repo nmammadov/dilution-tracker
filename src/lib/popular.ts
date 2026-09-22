@@ -1,11 +1,14 @@
 /**
- * Seed list of DilutionTracker-style popular names.
- * Checked against the SEC company ticker file on 2026-09-22.
+ * Seed list from DilutionTracker Open Access popular names on 2026-09-22.
+ * Checked against the SEC company ticker file the same day.
  * This is not scraped at runtime and Splitline is not affiliated with that site.
  */
 export interface PopularTicker {
   symbol: string;
+  /** Current SEC registrant name. */
   name: string;
+  /** Short label shown on the home-page chip. */
+  label: string;
   note?: string;
 }
 
@@ -15,50 +18,42 @@ export interface SkippedTicker {
 }
 
 export const POPULAR_TICKERS: PopularTicker[] = [
-  { symbol: "DCOY", name: "Decoy Therapeutics Inc." },
-  { symbol: "CNSP", name: "CNS Pharmaceuticals, Inc." },
-  { symbol: "AMIX", name: "Autonomix Medical, Inc." },
-  { symbol: "OPTT", name: "Ocean Power Technologies, Inc." },
-  { symbol: "ZCAR", name: "Zoomcar Holdings, Inc." },
-  { symbol: "RDZN", name: "Roadzen Inc." },
-  { symbol: "VS", name: "Versus Systems Inc." },
-  { symbol: "ANVS", name: "Annovis Bio, Inc." },
-  { symbol: "MLGO", name: "MicroAlgo Inc." },
-  { symbol: "BINI", name: "Bollinger Innovations, Inc.", note: "Formerly MULN" },
-  { symbol: "HOLO", name: "MicroCloud Hologram Inc." },
-  { symbol: "COSM", name: "Cosmos Health Inc." },
-  { symbol: "ASNS", name: "Actelis Networks Inc." },
-  { symbol: "AHG", name: "Akso Health Group" },
-  { symbol: "GDHG", name: "Golden Heaven Group Holdings Ltd." },
-  { symbol: "GME", name: "GameStop Corp." },
-  { symbol: "SCLX", name: "Scilex Holding Co" },
-  { symbol: "GMM", name: "Global Mofy AI Ltd" },
-  { symbol: "SNTI", name: "Senti Biosciences Holdings, Inc." },
-  { symbol: "XTIA", name: "XTI Aerospace, Inc." },
-  { symbol: "SMX", name: "SMX (Security Matters) Public Ltd Co" },
-  { symbol: "RGS", name: "Regis Corp" },
-  { symbol: "BENF", name: "Beneficient" },
-  { symbol: "EOSE", name: "Eos Energy Enterprises, Inc." },
-  { symbol: "POET", name: "POET Technologies Inc." },
-  { symbol: "TVGN", name: "Tevogen Inc." },
-  { symbol: "MDWD", name: "MediWound Ltd." },
+  { symbol: "DCOY", name: "Decoy Therapeutics Inc.", label: "Decoy Therapeutics" },
+  { symbol: "GRML", name: "Greenland Mines Ltd", label: "Greenland Mines" },
+  { symbol: "LHSW", name: "Lianhe Sowell International Group Ltd", label: "Lianhe Sowell" },
+  {
+    symbol: "QNME",
+    name: "Quanome Technologies, Inc.",
+    label: "Quanome Technologies",
+    note: "Formerly Lakeside Holding",
+  },
+  { symbol: "JAGX", name: "Jaguar Health, Inc.", label: "Jaguar Health" },
+  { symbol: "TOPS", name: "TOP SHIPS INC.", label: "Top Ships" },
+  { symbol: "IMCC", name: "IM Cannabis Corp.", label: "IM Cannabis" },
+  { symbol: "FBGL", name: "FBS Global Ltd", label: "FBS Global" },
+  { symbol: "ZEO", name: "Zeo Energy Corp.", label: "Zeo Energy" },
+  { symbol: "FLNA", name: "FILANA THERAPEUTICS, INC.", label: "Filana Therapeutics" },
+  { symbol: "CWD", name: "CaliberCos Inc.", label: "Caliber" },
+  { symbol: "IPDN", name: "Professional Diversity Network, Inc.", label: "Professional Diversity Network" },
+  { symbol: "GDC", name: "GD Culture Group Ltd", label: "GD Culture Group" },
+  { symbol: "NCT", name: "Intercont (Cayman) Ltd", label: "Intercont" },
+  { symbol: "RAIN", name: "Rain Enhancement Technologies Holdco, Inc.", label: "Rain Enhancement" },
+  { symbol: "GLND", name: "Greenland Energy Co", label: "Greenland Energy" },
+  { symbol: "STI", name: "Solidion Technology Inc.", label: "Solidion Technology" },
+  { symbol: "BFRG", name: "BullFrog AI Holdings, Inc.", label: "BullFrog AI" },
+  { symbol: "WHLR", name: "Wheeler Real Estate Investment Trust, Inc.", label: "Wheeler REIT" },
+  { symbol: "VKTX", name: "Viking Therapeutics, Inc.", label: "Viking Therapeutics" },
+  { symbol: "PFSA", name: "Profusa, Inc.", label: "Profusa" },
+  { symbol: "SVRE", name: "SaverOne 2014 Ltd.", label: "SaverOne" },
+  { symbol: "GELS", name: "Gelteq Ltd", label: "Gelteq" },
+  { symbol: "MASK", name: "3 E Network Technology Group Ltd", label: "3 E Network" },
+  { symbol: "EDBL", name: "Edible Garden AG Inc", label: "Edible Garden" },
+  { symbol: "VEEE", name: "Twin Vee PowerCats, Co.", label: "Twin Vee Powercats" },
+  { symbol: "TPST", name: "Tempest Therapeutics, Inc.", label: "Tempest Therapeutics" },
+  { symbol: "JTAI", name: "Jet.AI Inc.", label: "JetAI" },
+  { symbol: "SQFT", name: "Presidio Property Trust, Inc.", label: "Presidio Property Trust" },
+  { symbol: "YMT", name: "Yimutian Inc.", label: "Yimutian" },
 ];
 
-export const SKIPPED_POPULAR: SkippedTicker[] = [
-  { symbol: "VVPR", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  { symbol: "ZAPP", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  { symbol: "IVP", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  {
-    symbol: "MAXN",
-    reason: "Nasdaq delisting proceedings in 2026. The SEC ticker file lists MAXNQ, not MAXN, so MAXN is left off the working list.",
-  },
-  { symbol: "QLGN", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  {
-    symbol: "MULN",
-    reason: "Renamed to BINI (Bollinger Innovations) effective July 28, 2025. BINI is on the working list.",
-  },
-  { symbol: "VLCN", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  { symbol: "CSLR", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  { symbol: "SING", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-  { symbol: "DYNT", reason: "Not in the SEC company ticker file checked on 2026-09-22." },
-];
+/** Every name in the 2026-09-22 seed mapped to a current SEC ticker. */
+export const SKIPPED_POPULAR: SkippedTicker[] = [];

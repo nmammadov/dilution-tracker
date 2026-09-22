@@ -445,15 +445,17 @@ async function loadLatestNarrative(cik: string, submissions: Record<string, any>
   const recent = submissions?.filings?.recent;
   if (!recent?.form) return "";
   const count = recent.form.length as number;
-  for (let index = 0; index < count; index += 1) {
-    const form = String(recent.form[index] ?? "");
-    if (form !== "10-Q" && form !== "10-K") continue;
-    const accession = String(recent.accessionNumber[index] ?? "");
-    const primary = String(recent.primaryDocument[index] ?? "");
-    if (!accession || !primary) continue;
-    const html = await fetchText(archiveUrl(cik, accession, primary));
-    if (!html) return "";
-    return stripHtml(html).slice(0, 450_000);
+  const preferred = ["10-Q", "10-K", "20-F", "40-F"];
+  for (const formName of preferred) {
+    for (let index = 0; index < count; index += 1) {
+      if (String(recent.form[index] ?? "") !== formName) continue;
+      const accession = String(recent.accessionNumber[index] ?? "");
+      const primary = String(recent.primaryDocument[index] ?? "");
+      if (!accession || !primary) continue;
+      const html = await fetchText(archiveUrl(cik, accession, primary));
+      if (!html) return "";
+      return stripHtml(html).slice(0, 450_000);
+    }
   }
   return "";
 }
@@ -464,9 +466,20 @@ function latestMonetary(facts: Record<string, any> | null, concepts: string[]): 
 
 function latestShares(facts: Record<string, any> | null, concepts: string[]): FactRow | null {
   return (
-    latestFact(facts, "dei", concepts, "shares") ??
-    latestFact(facts, "us-gaap", concepts, "shares")
+    latestPositiveShares(facts, "dei", concepts) ??
+    latestPositiveShares(facts, "us-gaap", concepts)
   );
+}
+
+/** A zero share fact is a bad tag, not a company with no stock. Keep the newest positive count. */
+function latestPositiveShares(
+  facts: Record<string, any> | null,
+  namespace: string,
+  concepts: string[],
+): FactRow | null {
+  const rows = collectFacts(facts, namespace, concepts, "shares").filter((row) => (row.val ?? 0) > 0);
+  rows.sort((a, b) => compareFacts(a, b));
+  return rows[0] ?? null;
 }
 
 function latestFlow(
