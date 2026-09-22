@@ -112,6 +112,8 @@ Facts the fixture uses:
 - Cash, cash equivalents, and restricted cash **$8,289,108** at June 30, 2026, of which about **$2.7 million** is restricted under the Gates Foundation grant
 - Operating cash used in the first half of 2026 **$5,541,348** (about six months of burn)
 - Going-concern language; management pointed to funding into late 2026
+- Form S-3 filed August 15, 2025 cites **$46,236,111** of unsold securities. That figure is shown on the score and is not treated as remaining shelf capacity
+- ATM sales agreement with **Ladenburg Thalmann & Co., Inc.** The August 22, 2025 424B5 states a program of up to **$2.6 million**. Remaining ATM capacity is not restated in the Q2 2026 10-Q, so it does not raise Offering Ability
 - ELOC with about **$5.0 million** remaining, paused about 180 days by the June 26, 2026 PIPE
 - About **4,699,381** warrants outstanding, **401,126** common shares reserved for convertible preferred, and **808,000** resale-registered ELOC shares
 - Cover-page shares outstanding **655,185** as of August 11, 2026 (the June 30 balance sheet still showed 531,968; the fixture uses the later cover figure and says so)
