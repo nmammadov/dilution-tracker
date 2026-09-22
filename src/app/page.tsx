@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SearchForm } from "@/components/SearchForm";
+import { POPULAR_TICKERS, SKIPPED_POPULAR } from "@/lib/popular";
 import { METHODOLOGY } from "@/lib/thresholds";
 
 export default function HomePage() {
@@ -18,6 +19,48 @@ export default function HomePage() {
       <div className="mt-8 max-w-xl">
         <SearchForm variant="hero" initial="DCOY" />
       </div>
+
+      <section className="mt-10" aria-label="Popular tickers">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg text-paper">Popular</h2>
+          <p className="text-xs text-muted">{POPULAR_TICKERS.length} names that still resolve on EDGAR</p>
+        </div>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+          Seeded from the DilutionTracker Open Access popular names checked on September 22, 2026.
+          This list is not scraped at runtime, and Splitline is not affiliated with that site. Each
+          chip opens the same High/Low scores and evidence panels. Figures come from EDGAR, or from
+          the curated DCOY fixture when that feed is down.
+        </p>
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {POPULAR_TICKERS.map((ticker) => (
+            <li key={ticker.symbol}>
+              <Link
+                href={`/ticker/${ticker.symbol}`}
+                title={ticker.note ? `${ticker.name}. ${ticker.note}` : ticker.name}
+                className="inline-flex min-w-36 flex-col rounded-md border border-line bg-panel px-3 py-2 hover:border-copper"
+              >
+                <span className="mono text-sm text-paper">{ticker.symbol}</span>
+                <span className="mt-0.5 text-xs text-muted">{ticker.label}</span>
+                {ticker.note ? <span className="mt-0.5 text-[10px] text-copper">{ticker.note}</span> : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {SKIPPED_POPULAR.length > 0 ? (
+          <details className="mt-4 text-sm text-muted">
+            <summary className="cursor-pointer text-copper">Names from the seed list that are not current SEC tickers</summary>
+            <ul className="mt-3 space-y-2">
+              {SKIPPED_POPULAR.map((ticker) => (
+                <li key={ticker.symbol}>
+                  <span className="mono text-paper">{ticker.symbol}</span>
+                  {" — "}
+                  {ticker.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </section>
 
       <div className="mt-10 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-xl border border-line bg-panel p-5">
