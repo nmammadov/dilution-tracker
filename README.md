@@ -34,7 +34,17 @@ The ticker API is `GET /api/ticker/[symbol]`, for example `/api/ticker/DCOY`.
 
 ## Scores
 
-Every cutoff lives in `src/lib/thresholds.ts`. The ticker page repeats the same rules. Missing evidence stays **Low**. Unknown ATM or shelf capacity does not raise Offering Ability.
+Every cutoff lives in `src/lib/thresholds.ts`. The same map is on the in-app Methodology page at `/methodology`. On a ticker, each score has an expandable **Why High** or **Why Low** panel with the plain-English formula, the numeric line, every raw input, and links to the source filings.
+
+Missing evidence stays **Low**. A cited S-3 unsold aggregate or ATM program size does not raise Offering Ability unless the filing states a remaining balance that clears the threshold.
+
+| Score | Inputs | Threshold | Filings |
+| --- | --- | --- | --- |
+| Offering Ability | S-3/S-3ASR remaining $, ATM remaining $ and agent, ELOC remaining commitment, near-term shares, authorized headroom | ATM/ELOC remaining ≥ $1M (pause still counts), usable shelf remaining ≥ $5M, near-term ≥ 50% of shares out, or headroom ≥ 10× with a raise in the lookback | S-3, S-3ASR, S-1, 424B, 8-K, 10-Q, 10-K |
+| Overhead Supply | Warrants + convertibles + resale-registered shares, divided by shares outstanding | ≥ 50% | 10-Q, 10-K, S-1, S-3 |
+| Historical | Raise count, ATM/ELOC draw count, reverse-split count in ~24 months | ≥ 2 raises, or ≥ 2 reverse splits, or one of each, or ≥ 2 draws | 8-K, 424B, S-1, 10-Q, 10-K |
+| Cash Need | Cash, restricted cash, burn, runway months, going-concern flag | Going-concern language, or runway ≤ 9 months | 10-Q, 10-K |
+| Overall Risk | The four High/Low results | Cash Need High and (Offering Ability or Overhead High), or ≥ 3 of 4 High | The component filings |
 
 The lookback is **731 days** (about 24 months) ending on the analysis date. For a curated fixture that date is the filing date the notes were taken from. For a live lookup it is the filing date of the latest 10-Q or 10-K.
 

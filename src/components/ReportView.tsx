@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { formatDate, formatMonths, formatPrice, formatShares, formatUsd, formatUsdExact, kindLabel } from "@/lib/format";
-import { METHODOLOGY } from "@/lib/thresholds";
-import type { TickerReport } from "@/lib/types";
+import type { ScoreCard, TickerReport } from "@/lib/types";
 
 export function ReportView({ report }: { report: TickerReport }) {
   const { profile, cash } = report;
@@ -45,30 +44,15 @@ export function ReportView({ report }: { report: TickerReport }) {
       </dl>
 
       <section className="mt-8" aria-label="Dilution scores">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 className="text-lg">Scores</h2>
+          <Link href="/methodology" className="text-sm text-copper underline-offset-2 hover:underline">
+            Methodology
+          </Link>
+        </div>
+        <div className="space-y-3">
           {report.scores.map((score) => (
-            <article
-              key={score.id}
-              data-score={score.id}
-              data-level={score.level}
-              tabIndex={0}
-              className={`group relative rounded-xl border p-4 outline-none focus-visible:ring-2 focus-visible:ring-copper ${
-                score.level === "High"
-                  ? "border-high/50 bg-[#2a2416]"
-                  : "border-low/30 bg-[#16241c]"
-              }`}
-            >
-              <h2 className="text-xs text-muted">{score.label}</h2>
-              <p
-                className={`mono mt-2 text-3xl ${score.level === "High" ? "text-high" : "text-low"}`}
-              >
-                {score.level}
-              </p>
-              <p className="mt-3 text-xs leading-5 text-paper/90">
-                <span className="mono mr-1.5 text-[10px] tracking-[0.16em] text-muted">WHY</span>
-                <span title={score.why}>{score.why}</span>
-              </p>
-            </article>
+            <ScorePanel key={score.id} score={score} />
           ))}
         </div>
       </section>
@@ -116,15 +100,15 @@ export function ReportView({ report }: { report: TickerReport }) {
         </section>
 
         <section className="rounded-xl border border-line bg-panel p-5">
-          <h2 className="text-lg">How to read this</h2>
-          <ul className="mt-4 space-y-3 text-sm leading-6 text-muted">
-            {METHODOLOGY.map((item) => (
-              <li key={item.title}>
-                <span className="text-paper">{item.title}. </span>
-                {item.body}
-              </li>
-            ))}
-          </ul>
+          <h2 className="text-lg">How this score is calculated</h2>
+          <p className="mt-3 text-sm leading-6 text-muted">
+            Each score opens to the raw inputs, the threshold that chose High or Low, and the EDGAR
+            filings those inputs came from. The same map, without a ticker’s numbers, is on the
+            methodology page.
+          </p>
+          <Link href="/methodology" className="mt-4 inline-block text-sm text-copper underline-offset-2 hover:underline">
+            Open the methodology
+          </Link>
         </section>
       </div>
 
@@ -155,10 +139,14 @@ export function ReportView({ report }: { report: TickerReport }) {
                     {item.notes ? <p className="mt-1 max-w-xl text-xs leading-5 text-muted">{item.notes}</p> : null}
                   </td>
                   <td className="mono px-3 py-3 whitespace-nowrap text-paper">
-                    {item.remainingDollars != null ? formatUsd(item.remainingDollars) : "—"}
+                    {item.remainingDollars != null ? `${formatUsd(item.remainingDollars)} left` : "Remaining not stated"}
+                    {item.registeredDollars != null ? (
+                      <span className="mt-1 block text-xs text-muted">Registered {formatUsd(item.registeredDollars)}</span>
+                    ) : null}
                     {item.remainingShares != null ? (
                       <span className="mt-1 block text-xs text-muted">{formatShares(item.remainingShares)} sh</span>
                     ) : null}
+                    {item.agent ? <span className="mt-1 block text-xs text-muted">{item.agent}</span> : null}
                   </td>
                   <td className="px-3 py-3 text-muted">{item.status}</td>
                   <td className="px-3 py-3">
@@ -301,6 +289,78 @@ export function LookupMessage({ message }: { message: string }) {
         </Link>
       </p>
     </main>
+  );
+}
+
+function ScorePanel({ score }: { score: ScoreCard }) {
+  const high = score.level === "High";
+  return (
+    <article
+      data-score={score.id}
+      data-level={score.level}
+      className={`rounded-xl border p-4 ${high ? "border-high/50 bg-[#2a2416]" : "border-low/30 bg-[#16241c]"}`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm text-muted">{score.label}</h3>
+          <p className="mt-2 text-sm leading-6 text-paper" data-numeric={score.id}>
+            {score.numericLine}
+          </p>
+        </div>
+        <p className={`mono text-3xl ${high ? "text-high" : "text-low"}`}>{score.level}</p>
+      </div>
+      <details className="mt-3 border-t border-line/80 pt-3" open={score.id === "overall"}>
+        <summary className="cursor-pointer text-sm text-copper">Why {score.level}</summary>
+        <div className="mt-3 space-y-4">
+          <div>
+            <h4 className="mono text-[10px] tracking-[0.16em] text-muted">HOW THIS SCORE IS CALCULATED</h4>
+            <p className="mt-2 text-sm leading-6 text-paper">{score.formula}</p>
+          </div>
+          <div>
+            <h4 className="mono text-[10px] tracking-[0.16em] text-muted">THRESHOLD THAT DECIDED IT</h4>
+            <p className="mt-2 text-sm leading-6 text-paper">{score.decision}</p>
+          </div>
+          <div>
+            <h4 className="mono text-[10px] tracking-[0.16em] text-muted">RAW INPUTS</h4>
+            <dl className="mt-2 divide-y divide-line/70">
+              {score.inputs.map((row) => (
+                <div key={`${score.id}-${row.label}-${row.value}`} className="py-2">
+                  <dt className="text-xs text-muted">{row.label}</dt>
+                  <dd className="mt-1 text-sm text-paper">
+                    {row.href ? (
+                      <a className="text-copper underline-offset-2 hover:underline" href={row.href}>
+                        {row.value}
+                      </a>
+                    ) : (
+                      row.value
+                    )}
+                    {row.note ? <span className="mt-1 block text-xs leading-5 text-muted">{row.note}</span> : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <div>
+            <h4 className="mono text-[10px] tracking-[0.16em] text-muted">SOURCE FILINGS</h4>
+            {score.sources.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">No filing link was attached to this score.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm">
+                {score.sources.map((filing) => (
+                  <li key={`${score.id}-${filing.url}`}>
+                    <a className="text-copper underline-offset-2 hover:underline" href={filing.url}>
+                      <span className="mono">{filing.form}</span>
+                      {filing.filed ? ` · ${formatDate(filing.filed)}` : ""}
+                      {filing.description ? ` · ${filing.description}` : ""}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </details>
+    </article>
   );
 }
 

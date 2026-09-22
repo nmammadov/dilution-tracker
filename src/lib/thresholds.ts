@@ -19,6 +19,83 @@ export const THRESHOLDS = {
   nearTermRatio: 0.5,
 } as const;
 
+export const SCORE_MAP: {
+  title: string;
+  inputs: string[];
+  formula: string;
+  threshold: string;
+  filings: string[];
+}[] = [
+  {
+    title: "Offering Ability",
+    inputs: [
+      "S-3 / S-3ASR registered dollars and remaining dollars, if the filing states them",
+      "ATM remaining dollars, program size, and sales agent",
+      "ELOC remaining commitment",
+      "Near-term exercisable or convertible shares versus shares outstanding",
+      "Authorized shares versus shares outstanding, plus equity raises in the lookback",
+      "Market cap, shown only as scale",
+    ],
+    formula:
+      "Shelf remaining + ATM remaining + ELOC remaining, tested against the dollar cutoffs, with two share-count paths as alternates.",
+    threshold:
+      "High if ATM or ELOC remaining ≥ $1 million (a pause still counts), or usable shelf remaining ≥ $5 million, or near-term issuance ≥ 50% of shares outstanding, or authorized headroom ≥ 10× and at least one equity raise in the lookback. A cited program size or unsold aggregate is not remaining capacity.",
+    filings: ["S-3", "S-3ASR", "S-1", "424B", "8-K", "10-Q", "10-K"],
+  },
+  {
+    title: "Overhead Supply",
+    inputs: [
+      "Warrant shares",
+      "Convertible shares reserved",
+      "Resale-registered shares",
+      "Shares outstanding",
+    ],
+    formula: "(Warrants + convertibles + resale registrations) / shares outstanding.",
+    threshold: "High if that ratio is ≥ 50%.",
+    filings: ["10-Q", "10-K", "S-1", "S-3", "424B"],
+  },
+  {
+    title: "Historical",
+    inputs: [
+      "Count of equity raises in the lookback (PIPE, registered deal, ATM draw, ELOC draw)",
+      "Count of ATM and ELOC draws",
+      "Count of reverse splits",
+    ],
+    formula: "Counts inside the 731 days before the analysis date.",
+    threshold:
+      "High if raises ≥ 2, or reverse splits ≥ 2, or at least one reverse split and one raise, or ATM/ELOC draws ≥ 2.",
+    filings: ["8-K", "424B", "S-1", "10-Q", "10-K"],
+  },
+  {
+    title: "Cash Need",
+    inputs: [
+      "Cash, cash equivalents, and restricted cash",
+      "Restricted cash",
+      "Unrestricted cash (total minus restricted)",
+      "Operating cash flow and the length of that period",
+      "Monthly burn and runway months",
+      "Going-concern flag",
+    ],
+    formula: "Unrestricted cash / monthly operating burn, plus a going-concern check.",
+    threshold:
+      "High if going-concern language is present, or runway ≤ 9 months. Missing cash or burn stays Low.",
+    filings: ["10-Q", "10-K"],
+  },
+  {
+    title: "Overall Risk",
+    inputs: [
+      "Cash Need High or Low",
+      "Offering Ability High or Low",
+      "Overhead Supply High or Low",
+      "Historical High or Low",
+    ],
+    formula: "Combine the four component levels. No extra market data.",
+    threshold:
+      "High if Cash Need is High and Offering Ability or Overhead Supply is High, or if at least 3 of the 4 components are High.",
+    filings: ["The filings linked on the component scores"],
+  },
+];
+
 export const METHODOLOGY: { title: string; body: string }[] = [
   {
     title: "Offering Ability",

@@ -30,6 +30,9 @@ export default function HomePage() {
               </li>
             ))}
           </ol>
+          <Link href="/methodology" className="mt-5 inline-block text-sm text-copper underline-offset-2 hover:underline">
+            Full score map
+          </Link>
         </section>
 
         <aside className="flex flex-col justify-between rounded-xl border border-copper/40 bg-panel-2 p-5">

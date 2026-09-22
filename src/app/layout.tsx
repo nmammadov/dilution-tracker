@@ -31,10 +31,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${sans.className} ${mono.variable} antialiased`}>
         <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 sm:px-6">
           <header className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
-            <Link href="/" className="group">
-              <span className="mono text-sm tracking-[0.28em] text-paper">SPLITLINE</span>
-              <span className="mt-1 block text-xs text-muted">Micro-cap dilution desk</span>
-            </Link>
+            <div className="flex items-center gap-5">
+              <Link href="/" className="group">
+                <span className="mono text-sm tracking-[0.28em] text-paper">SPLITLINE</span>
+                <span className="mt-1 block text-xs text-muted">Micro-cap dilution desk</span>
+              </Link>
+              <Link href="/methodology" className="text-xs text-muted underline-offset-2 hover:text-paper hover:underline">
+                Methodology
+              </Link>
+            </div>
             <SearchForm />
           </header>
           <div className="rule h-px w-full" />

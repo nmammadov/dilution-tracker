@@ -4,6 +4,10 @@ const Q2_10Q = "https://www.sec.gov/Archives/edgar/data/1615219/0001193125263468
 const ELOC_S1 = "https://www.sec.gov/Archives/edgar/data/1615219/000119312526269891/dcoy-20260612.htm";
 const PIPE_EXHIBIT =
   "https://www.sec.gov/Archives/edgar/data/1615219/000119312526286737/dcoy-ex99_1.htm";
+const SHELF_S3 =
+  "https://www.sec.gov/Archives/edgar/data/1615219/000161521925000105/slrx-formsx3atmprosupp2025.htm";
+const ATM_424B5 =
+  "https://www.sec.gov/Archives/edgar/data/1615219/000162828025041046/slrxatmprospectus.htm";
 
 /**
  * Curated from Decoy Therapeutics public EDGAR filings (Q2 2026 Form 10-Q,
@@ -49,9 +53,26 @@ export function decoyFixture(): AnalysisInput {
     },
     instruments: [
       {
+        kind: "shelf",
+        name: "Form S-3 unsold securities",
+        remainingDollars: null,
+        registeredDollars: 46_236_111,
+        remainingShares: null,
+        overhangShares: null,
+        nearTermIssuanceShares: null,
+        usable: false,
+        paused: false,
+        agent: null,
+        status: "Filed August 15, 2025; remaining balance not restated",
+        edgarUrl: SHELF_S3,
+        notes:
+          "The S-3 says unsold securities were registered at a maximum aggregate price of $46,236,111 under Rule 415(a)(6). That cited aggregate is not treated as current remaining shelf capacity. The August 22, 2025 ATM supplement also describes a baby-shelf limit while the public float was about $9.2 million. This row does not by itself raise Offering Ability.",
+      },
+      {
         kind: "eloc",
         name: "ELOC with C/M Capital Master Fund",
         remainingDollars: 5_000_000,
+        agent: "C/M Capital Master Fund, LP",
         remainingShares: null,
         overhangShares: null,
         nearTermIssuanceShares: null,
@@ -66,15 +87,17 @@ export function decoyFixture(): AnalysisInput {
         kind: "atm",
         name: "At-the-market program",
         remainingDollars: null,
+        registeredDollars: 2_600_000,
         remainingShares: null,
         overhangShares: null,
         nearTermIssuanceShares: null,
         usable: true,
         paused: true,
-        status: "Paused about 180 days after the June 26, 2026 PIPE",
-        edgarUrl: Q2_10Q,
+        agent: "Ladenburg Thalmann & Co., Inc.",
+        status: "Paused about 180 days after the June 26, 2026 PIPE; remainder not restated",
+        edgarUrl: ATM_424B5,
         notes:
-          "H1 2025 ATM sales were about $0.4 million. No ATM sales in the first half of 2026. A prior program size of about $2.6 million appears in an August 2025 8-K; the Q2 2026 10-Q does not restate remaining ATM capacity, so that unknown balance does not itself raise Offering Ability.",
+          "Sales agreement dated February 5, 2021. The August 22, 2025 prospectus supplement offers shares with an aggregate offering price of up to $2,600,000 through Ladenburg Thalmann & Co., Inc. The Q2 2026 10-Q does not restate what remains, so remaining capacity stays blank and does not raise Offering Ability. H1 2025 ATM sales were about $0.4 million, before this supplement. No ATM sales in the first half of 2026.",
       },
       {
         kind: "shelf",
@@ -214,6 +237,18 @@ export function decoyFixture(): AnalysisInput {
       },
     ],
     filings: [
+      {
+        form: "S-3",
+        filed: "2025-08-15",
+        description: "Shelf registration citing $46,236,111 of unsold securities",
+        url: SHELF_S3,
+      },
+      {
+        form: "424B5",
+        filed: "2025-08-22",
+        description: "ATM prospectus supplement, up to $2.6 million, Ladenburg Thalmann",
+        url: ATM_424B5,
+      },
       {
         form: "8-K",
         filed: "2026-09-15",

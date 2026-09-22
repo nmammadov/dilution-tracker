@@ -89,6 +89,29 @@ export function extractReverseSplits(text: string): { date: string; ratio: strin
   return found;
 }
 
+export function extractShelfUnsoldDollars(text: string): number | null {
+  const match = text.match(
+    /maximum aggregate price of \$\s*([\d,]+)\s+registered are unsold/i,
+  );
+  if (!match) return null;
+  return parseCount(match[1]);
+}
+
+export function extractAtmProgramDollars(text: string): number | null {
+  const match = text.match(/aggregate offering price of up to \$\s*([\d,]+)/i);
+  if (!match) return null;
+  return parseCount(match[1]);
+}
+
+export function extractAtmAgent(text: string): string | null {
+  const named = text.match(/with (Ladenburg Thalmann(?:\s+&\s+Co\.,?\s+Inc\.?)?)/i);
+  if (named) return named[1].replace(/\s+/g, " ").trim();
+  const generic = text.match(
+    /sales agreement,?\s+(?:dated as of [^,]{4,40},?\s+)?with ([A-Z][A-Za-z0-9 .,&]{2,60}?)(?:,| acting|\s+\()/,
+  );
+  return generic ? generic[1].trim() : null;
+}
+
 export function extractElocRemaining(text: string): number | null {
   const match = text.match(
     /approximately\s+\$\s*([\d,.]+)\s+million(?:\s+of the commitment amount)?\s+remained available/i,

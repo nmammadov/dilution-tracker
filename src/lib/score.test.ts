@@ -3,7 +3,13 @@ import { describe, it } from "node:test";
 import { assembleReport } from "./assemble";
 import { decoyFixture } from "./fixtures";
 import { deriveCash } from "./metrics";
-import { detectGoingConcern, isoFromLongDate } from "./parse";
+import {
+  detectGoingConcern,
+  extractAtmAgent,
+  extractAtmProgramDollars,
+  extractShelfUnsoldDollars,
+  isoFromLongDate,
+} from "./parse";
 import { scoreAnalysis } from "./score";
 import type { AnalysisInput, Instrument } from "./types";
 
@@ -55,8 +61,30 @@ describe("DCOY fixture", () => {
     const report = assembleReport(facts, "fixture", "test");
     for (const score of report.scores) {
       assert.equal(score.level, "High", `${score.label} should be High: ${score.why}`);
-      assert.ok(score.why.length > 40);
+      assert.ok(score.formula.length > 40, score.id);
+      assert.match(score.numericLine, new RegExp(score.level.toUpperCase()));
+      assert.ok(score.inputs.length > 0, score.id);
+      assert.ok(score.decision.length > 20, score.id);
+      assert.ok(score.sources.length > 0, score.id);
     }
+    const ability = report.scores.find((score) => score.id === "offeringAbility");
+    assert.ok(ability);
+    assert.match(ability.numericLine, /ELOC remaining \$5M/);
+    assert.match(ability.decision, /\$5,000,000/);
+    assert.match(ability.formula, /\$1 million/);
+    assert.ok(ability.inputs.some((row) => row.label.startsWith("Shelf")));
+    assert.ok(ability.inputs.some((row) => /Ladenburg/.test(`${row.value} ${row.note ?? ""}`)));
+    assert.ok(ability.sources.some((source) => source.url.includes("slrx-formsx3atmprosupp2025")));
+    assert.ok(ability.sources.some((source) => source.url.includes("slrxatmprospectus")));
+    const overhead = report.scores.find((score) => score.id === "overheadSupply");
+    assert.match(overhead?.numericLine ?? "", /902%/);
+    assert.match(overhead?.decision ?? "", /50%/);
+    const cashNeed = report.scores.find((score) => score.id === "cashNeed");
+    assert.match(cashNeed?.numericLine ?? "", /6\.1 months/);
+    assert.match(cashNeed?.numericLine ?? "", /going concern yes/i);
+    const historical = report.scores.find((score) => score.id === "historical");
+    assert.match(historical?.numericLine ?? "", /4 equity raises/);
+    assert.match(historical?.numericLine ?? "", /2 reverse splits/);
     assert.match(report.likelihood, /Offering likelihood is elevated/);
     assert.equal(report.offerings.length, 4);
     assert.equal(report.reverseSplits.length, 2);
@@ -266,6 +294,26 @@ describe("filing text parsers", () => {
 
   it("parses a long date", () => {
     assert.equal(isoFromLongDate("August 15, 2025"), "2025-08-15");
+  });
+
+  it("reads shelf unsold dollars and the ATM agent from registration prose", () => {
+    assert.equal(
+      extractShelfUnsoldDollars(
+        "securities with a maximum aggregate price of $46,236,111 registered are unsold securities",
+      ),
+      46_236_111,
+    );
+    assert.equal(
+      extractAtmProgramDollars(
+        "we may offer and sell shares having an aggregate offering price of up to $2,600,000",
+      ),
+      2_600_000,
+    );
+    assert.match(
+      extractAtmAgent("At the Market Offering Agreement with Ladenburg Thalmann & Co., Inc. acting as sales agent") ??
+        "",
+      /Ladenburg Thalmann/,
+    );
   });
 });
 

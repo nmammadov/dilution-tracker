@@ -1,10 +1,13 @@
 import { padCik } from "./format";
 import {
   detectGoingConcern,
+  extractAtmAgent,
+  extractAtmProgramDollars,
   extractAuthorizedShares,
   extractCoverShares,
   extractElocRemaining,
   extractReverseSplits,
+  extractShelfUnsoldDollars,
   extractWarrantCount,
   periodMonths,
   stripHtml,
@@ -89,8 +92,12 @@ export async function fetchEdgarBundle(
     ]);
 
     let narrative = "";
+    let registrationText = "";
     if (options.includeNarrative) {
-      narrative = await loadLatestNarrative(match.cik, submissions);
+      [narrative, registrationText] = await Promise.all([
+        loadLatestNarrative(match.cik, submissions),
+        loadRegistrationText(match.cik, submissions),
+      ]);
     }
 
     const analysis = buildLiveAnalysis({
@@ -103,6 +110,7 @@ export async function fetchEdgarBundle(
       operating,
       sharesFact,
       narrative,
+      registrationText,
     });
 
     return {
@@ -127,6 +135,7 @@ function buildLiveAnalysis(args: {
   operating: { row: FactRow; months: number } | null;
   sharesFact: FactRow | null;
   narrative: string;
+  registrationText: string;
 }): AnalysisInput {
   const caveats = [
     "Live mode is a best-effort read of EDGAR submissions, XBRL company facts, and one periodic report. Unparsed shelf or ATM capacity stays blank and does not raise a score.",
@@ -205,19 +214,51 @@ function buildLiveAnalysis(args: {
   }
 
   const shelfFiling = args.filings.find((filing) => /^(S-3|S-3ASR|F-3|F-3ASR)/.test(filing.form));
-  if (shelfFiling) {
+  const shelfUnsold = extractShelfUnsoldDollars(`${text}\n${args.registrationText}`);
+  if (shelfFiling || shelfUnsold != null) {
     instruments.push({
       kind: "shelf",
-      name: `${shelfFiling.form} on file`,
+      name: shelfFiling ? `${shelfFiling.form} on file` : "Shelf amount cited in a filing",
       remainingDollars: null,
+      registeredDollars: shelfUnsold,
       remainingShares: null,
       overhangShares: null,
       nearTermIssuanceShares: null,
       usable: false,
       paused: false,
-      status: "Registration on file; remaining capacity was not parsed",
-      edgarUrl: shelfFiling.url,
-      notes: "Live mode does not assume a dollar capacity from the form type alone.",
+      status: shelfUnsold != null
+        ? "Unsold aggregate cited; current remainder was not confirmed"
+        : "Registration on file; remaining capacity was not parsed",
+      edgarUrl: shelfFiling?.url ?? args.filings.find((filing) => filing.form.startsWith("10-"))?.url ?? null,
+      notes: shelfUnsold != null
+        ? "The unsold aggregate printed in the registration is shown as registered dollars. It is not treated as remaining shelf capacity, so it does not raise Offering Ability."
+        : "Live mode does not assume a dollar capacity from the form type alone.",
+    });
+  }
+
+  const atm = instruments.find((item) => item.kind === "atm");
+  const atmAgent = extractAtmAgent(`${text}\n${args.registrationText}`);
+  const atmProgram = extractAtmProgramDollars(`${text}\n${args.registrationText}`);
+  const atmFiling = args.filings.find((filing) => /^424B/.test(filing.form));
+  if (atm) {
+    if (atmAgent) atm.agent = atmAgent;
+    if (atmProgram != null) atm.registeredDollars = atmProgram;
+    if (atmFiling) atm.edgarUrl = atmFiling.url;
+  } else if (atmAgent || atmProgram != null) {
+    instruments.push({
+      kind: "atm",
+      name: "At-the-market program cited in a registration",
+      remainingDollars: null,
+      registeredDollars: atmProgram,
+      remainingShares: null,
+      overhangShares: null,
+      nearTermIssuanceShares: null,
+      usable: true,
+      paused: false,
+      agent: atmAgent,
+      status: "Program size parsed; remaining capacity was not",
+      edgarUrl: atmFiling?.url ?? null,
+      notes: "A stated program size without a remaining-dollar figure does not raise Offering Ability.",
     });
   }
 
@@ -321,7 +362,7 @@ function buildLiveAnalysis(args: {
     },
     instruments,
     events,
-    filings: args.filings.slice(0, 12),
+    filings: args.filings,
   };
 }
 
@@ -342,12 +383,14 @@ async function loadTickers(): Promise<Map<string, { cik: string; title: string }
   return map;
 }
 
+const SHELF_FORM = /^(S-3|S-3\/A|S-3ASR|F-3|F-3ASR|424B\d|S-1|S-1\/A)$/;
+
 function listFilings(cik: string, submissions: Record<string, any> | null): FilingLink[] {
   const recent = submissions?.filings?.recent;
   if (!recent || !Array.isArray(recent.form) || !Array.isArray(recent.accessionNumber)) return [];
   const links: FilingLink[] = [];
-  const count = recent.form.length as number;
-  for (let index = 0; index < count && links.length < 18; index += 1) {
+  const count = Math.min(recent.form.length as number, 400);
+  for (let index = 0; index < count; index += 1) {
     const form = String(recent.form[index] ?? "");
     if (!INTERESTING.test(form)) continue;
     const accession = String(recent.accessionNumber[index] ?? "");
@@ -360,7 +403,42 @@ function listFilings(cik: string, submissions: Record<string, any> | null): Fili
       url: archiveUrl(cik, accession, primary),
     });
   }
-  return links;
+  const newest = links.slice(0, 12);
+  const seen = new Set(newest.map((filing) => filing.url));
+  const extras: FilingLink[] = [];
+  const formsKept = new Set<string>();
+  for (const filing of links) {
+    if (!SHELF_FORM.test(filing.form) || seen.has(filing.url)) continue;
+    const key = filing.form.replace(/\/A$/, "");
+    if (formsKept.has(key)) continue;
+    formsKept.add(key);
+    extras.push(filing);
+    if (extras.length >= 6) break;
+  }
+  return [...newest, ...extras];
+}
+
+async function loadRegistrationText(
+  cik: string,
+  submissions: Record<string, any> | null,
+): Promise<string> {
+  const recent = submissions?.filings?.recent;
+  if (!recent?.form) return "";
+  const wanted = ["S-3", "S-3ASR", "424B5"];
+  const found = new Set<string>();
+  const chunks: string[] = [];
+  const count = recent.form.length as number;
+  for (let index = 0; index < count && found.size < wanted.length; index += 1) {
+    const form = String(recent.form[index] ?? "");
+    if (!wanted.includes(form) || found.has(form)) continue;
+    const accession = String(recent.accessionNumber[index] ?? "");
+    const primary = String(recent.primaryDocument[index] ?? "");
+    if (!accession || !primary) continue;
+    found.add(form);
+    const html = await fetchText(archiveUrl(cik, accession, primary));
+    if (html) chunks.push(stripHtml(html).slice(0, 120_000));
+  }
+  return chunks.join("\n");
 }
 
 async function loadLatestNarrative(cik: string, submissions: Record<string, any> | null): Promise<string> {

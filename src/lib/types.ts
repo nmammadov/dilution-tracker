@@ -25,6 +25,14 @@ export interface ScoreCard {
   label: string;
   level: ScoreLevel;
   why: string;
+  /** Plain-English rule. Same rule for every ticker. */
+  formula: string;
+  /** The ticker's numbers, then the High or Low result. */
+  numericLine: string;
+  /** The comparison that decided High versus Low. */
+  decision: string;
+  inputs: EvidenceInput[];
+  sources: FilingLink[];
 }
 
 export interface Instrument {
@@ -50,6 +58,17 @@ export interface Instrument {
   status: string;
   edgarUrl: string | null;
   notes: string | null;
+  /** Headline registration or program size when remaining dollars are a different figure. */
+  registeredDollars?: number | null;
+  /** ATM sales agent or ELOC counterparty, when the filing names one. */
+  agent?: string | null;
+}
+
+export interface EvidenceInput {
+  label: string;
+  value: string;
+  note: string | null;
+  href: string | null;
 }
 
 export interface CapitalEvent {
