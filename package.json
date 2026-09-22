@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test src/lib/score.test.ts"
+    "test": "tsx --test src/lib/score.test.ts src/lib/popular.test.ts"
   },
   "dependencies": {
     "next": "^15.5.4",
