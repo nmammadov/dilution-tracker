@@ -107,6 +107,7 @@ Facts the fixture uses:
 - Cover-page shares outstanding **655,185** as of August 11, 2026 (the June 30 balance sheet still showed 531,968; the fixture uses the later cover figure and says so)
 - Reverse splits effective August 15, 2025 (1-for-15) and March 6, 2026 (1-for-12)
 - June 29, 2026 PIPE of about **$3.5 million**, plus earlier ATM and ELOC draws
+- September 14, 2026 special meeting: stockholders approved issuance on exercise of the milestone warrants, and approved cutting authorized common shares to 90 million. The clinical milestones still gate exercise. Authorized shares in the model stay at 100 million until a filed certificate says otherwise. Headroom is High either way.
 
 On these inputs every score is **High**, and the likelihood summary says offering likelihood is elevated. Milestone warrants are overhang only. They are not treated as immediately exercisable.
 

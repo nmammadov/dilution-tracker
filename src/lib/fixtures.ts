@@ -12,12 +12,13 @@ const PIPE_EXHIBIT =
  */
 export function decoyFixture(): AnalysisInput {
   return {
-    analysisAsOf: "2026-08-12",
+    analysisAsOf: "2026-09-15",
     caveats: [
       "DCOY dilution figures are a curated reading of public filings, not a live re-parse of the 10-Q HTML. Price is filled from a quote feed only when that request succeeds.",
-      "The June 30, 2026 balance sheet lists 531,968 common shares outstanding. The August 11, 2026 cover page lists 655,185. Overhang uses the later cover-page count.",
+      "The June 30, 2026 balance sheet lists 531,968 common shares outstanding. The August 11, 2026 cover page lists 655,185. Overhang uses the later cover-page count. A July 20, 2026 record date in the September 2026 8-K listed 590,185 shares entitled to vote.",
       "H1 2025 ATM share counts disagree inside the same 10-Q (equity footnote 2,218 shares versus MD&A 1,966). Both describe about $0.4 million of gross proceeds. The table shows the footnote count.",
-      "Milestone warrants from the June 2026 PIPE need stockholder approval and clinical milestones, so they sit in overhang and not in near-term issuance capacity.",
+      "On September 14, 2026 stockholders approved issuance of the June PIPE milestone warrants. Exercise still depends on the clinical milestones, so those shares stay in overhang and are not counted as near-term issuance.",
+      "The same meeting approved cutting authorized common stock by 10 million shares, to 90 million. The 8-K does not say the certificate of amendment was filed, so this fixture keeps the 100 million authorized shares from the June 30 balance sheet. Either figure is still more than 10× shares outstanding.",
     ],
     profile: {
       symbol: "DCOY",
@@ -101,7 +102,7 @@ export function decoyFixture(): AnalysisInput {
         status: "4,699,381 warrants outstanding at June 30, 2026",
         edgarUrl: Q2_10Q,
         notes:
-          "Weighted-average exercise price about $9.91. The total includes November 2025 series and representative warrants plus 3,766,500 warrants granted in 2026 at $5.91, largely the milestone Series A (100%), Series B (200%), and Series C (200%) warrants on the June PIPE. Milestone exercise is gated, so those shares are not treated as near-term issuance.",
+          "Weighted-average exercise price about $9.91. The total includes November 2025 series and representative warrants plus 3,766,500 warrants granted in 2026 at $5.91, largely the milestone Series A (100%), Series B (200%), and Series C (200%) warrants on the June PIPE. Stockholders approved issuance on exercise of those milestone warrants on September 14, 2026. The clinical milestones still gate exercise, so the shares are overhang and not near-term issuance.",
       },
       {
         kind: "convertible",
@@ -213,6 +214,13 @@ export function decoyFixture(): AnalysisInput {
       },
     ],
     filings: [
+      {
+        form: "8-K",
+        filed: "2026-09-15",
+        description:
+          "Special meeting: stockholders approved milestone-warrant issuance and an authorized-share reduction",
+        url: "https://www.sec.gov/Archives/edgar/data/1615219/000161521926000016/dcoy-20260914.htm",
+      },
       {
         form: "10-Q",
         filed: "2026-08-12",
