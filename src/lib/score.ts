@@ -1,4 +1,4 @@
-import { daysBetween, formatDate, formatPct, formatShares, formatUsd, formatUsdExact } from "./format";
+import { daysBetween, formatDate, formatMoney, formatPct, formatShares, formatUsd, formatUsdExact } from "./format";
 import { deriveCash, overhangRatio, overhangShareCount } from "./metrics";
 import { THRESHOLDS } from "./thresholds";
 import type {
@@ -12,16 +12,16 @@ import type {
 } from "./types";
 
 const OFFERING_FORMULA =
-  "Offering Ability is High when any one path is true: an ATM or ELOC is still in place with remaining capacity of at least $1 million (a contractual pause still counts), an effective shelf has remaining capacity of at least $5 million, near-term exercisable or convertible shares are at least 50% of shares outstanding, or authorized-but-unissued shares are at least 10× shares outstanding and the company raised equity in the lookback. A cited registration or program size is not remaining capacity unless the filing states what is still unsold and usable. Market cap is shown only as scale.";
+  "Offering Ability is High when any one path is true: an ATM or ELOC is still in place with remaining capacity of at least $1 million (a contractual pause still counts), an effective shelf has remaining capacity of at least $5 million, near-term exercisable or convertible shares are at least 50% of shares outstanding, authorized-but-unissued shares are at least 10× shares outstanding and the company raised equity in the lookback, an effective or pending F-3/S-3 resale registration covers at least 50% of shares outstanding, or a convertible note issued inside the 731-day lookback is still outstanding, converts at a variable price, and can be settled only in shares. A cited registration or program size is not remaining capacity unless the filing states what is still unsold and usable. The resale path uses the share count printed in the prospectus. If a later filing states a consolidation ratio, that count is divided by the ratio before the comparison. The variable-note path has no dollar cutoff: the principal is shown as cited and is not compared with $1 million. Market cap is shown only as scale.";
 
 const OVERHEAD_FORMULA =
-  "Overhead Supply is High when warrant shares + convertible shares + resale-registered shares are at least 50% of shares outstanding. Count a resale block once if those shares are already inside the warrant total. Missing share counts stay Low.";
+  "Overhead Supply is High when warrant shares + convertible shares + F-3/S-3 resale-registered shares are at least 50% of shares outstanding. Count a resale block once if those shares are already inside the warrant or convertible total. If a later filing states a consolidation ratio, pre-consolidation counts are divided by that ratio. Missing share counts stay Low. A floor price is not turned into a share count.";
 
 const HISTORICAL_FORMULA =
-  "Historical is High when the 731 days (about 24 months) before the analysis date include at least two equity raises, at least two reverse splits, one reverse split plus one equity raise, or at least two ATM or ELOC draws. PIPE, registered deals, ATM draws, and ELOC draws all count as raises.";
+  "Historical is High when the 731 days (about 24 months) before the analysis date include at least two equity raises, at least two reverse splits, one reverse split plus one equity raise, or at least two ATM or ELOC draws. PIPE, registered deals, ATM draws, ELOC draws, convertible notes, and other share-settled notes all count as raises.";
 
 const CASH_FORMULA =
-  "Cash Need is High when the filing discloses substantial doubt about continuing as a going concern, or when unrestricted cash covers 9 months or less of trailing operating burn. Unrestricted cash is total cash minus restricted cash when both are known. Monthly burn is the absolute value of negative operating cash flow divided by the length of that period. Positive operating cash flow does not create a burn rate. Missing cash evidence stays Low.";
+  "Cash Need is High when the filing discloses substantial doubt or significant doubt about continuing as a going concern, or when unrestricted cash covers 9 months or less of trailing operating burn. For a foreign private issuer, cash and operating cash flow come from the latest 20-F, 40-F, or financial 6-K, in the filing currency, with no FX conversion. Unrestricted cash is total cash minus restricted cash when the total already includes restricted cash. When the filing presents them as separate lines, restricted cash is shown and is not subtracted. Monthly burn is the absolute value of negative operating cash flow divided by the length of that period. Positive operating cash flow does not create a burn rate. Missing cash evidence stays Low.";
 
 const OVERALL_FORMULA =
   "Overall Risk is High when Cash Need is High and either Offering Ability or Overhead Supply is High, or when at least 3 of those 4 component scores are High. Cash Need alone is not enough.";
@@ -47,7 +47,7 @@ export function scoreAnalysis(input: AnalysisInput): ScoreCard[] {
 function scoreOfferingAbility(input: AnalysisInput): ScoreCard {
   const fired: string[] = [];
   const inputs: EvidenceInput[] = [];
-  const shelves = input.instruments.filter((item) => item.kind === "shelf");
+  const shelves = input.instruments.filter((item) => item.kind === "shelf" && !item.resaleRegistration);
   const atms = input.instruments.filter((item) => item.kind === "atm");
   const elocs = input.instruments.filter((item) => item.kind === "eloc");
 
@@ -163,7 +163,55 @@ function scoreOfferingAbility(input: AnalysisInput): ScoreCard {
     href: input.cash.sourceUrl,
   });
 
-  const usableRemaining = [...atms, ...elocs, ...shelves]
+  const resales = input.instruments.filter(
+    (item) => item.resaleRegistration && (item.overhangShares ?? 0) > 0,
+  );
+  const resaleShares = resales.reduce((sum, item) => sum + (item.overhangShares ?? 0), 0);
+  const resaleRatio = outstanding != null && outstanding > 0 && resales.length > 0 ? resaleShares / outstanding : null;
+  if (resaleRatio != null && resaleRatio >= THRESHOLDS.overhangRatio) {
+    fired.push(
+      `F-3/S-3 resale registration ${formatShares(resaleShares)} is ${formatPct(resaleRatio)} of shares outstanding ≥ ${THRESHOLDS.overhangRatio * 100}%`,
+    );
+  }
+  inputs.push({
+    label: "F-3/S-3 resale registration",
+    value:
+      resaleRatio == null
+        ? "No resale share count in this model"
+        : `${formatShares(resaleShares)} shares · ${formatPct(resaleRatio)} of ${formatShares(outstanding)} outstanding`,
+    note: `High if the registered resale block is at least ${THRESHOLDS.overhangRatio * 100}% of shares outstanding. A primary shelf dollar amount is a different test. A later consolidation ratio is applied before this percentage.`,
+    href: resales[0]?.edgarUrl ?? firstUrl(filingsMatching(input, /^F-3|^S-3/)),
+  });
+
+  const openConverts = input.instruments.filter((item) => {
+    if (item.kind !== "convertible" || !item.usable || !item.variableConversion || !item.shareSettled) return false;
+    if (!item.issuedOn) return false;
+    const days = daysBetween(item.issuedOn, input.analysisAsOf);
+    return days != null && days >= 0 && days <= THRESHOLDS.historicalDays;
+  });
+  if (openConverts.length > 0) {
+    fired.push(
+      `${openConverts.length} open variable-price share-settled convertible note(s) inside the ${THRESHOLDS.historicalDays}-day lookback`,
+    );
+  }
+  if (openConverts.length === 0) {
+    inputs.push({
+      label: "Variable share-settled convertible",
+      value: "None in this model",
+      note: "High when a note issued inside the lookback is still outstanding, converts at a variable price, and is not repayable in cash. There is no dollar cutoff on this path.",
+      href: null,
+    });
+  }
+  for (const note of openConverts) {
+    inputs.push({
+      label: `Open convert · ${note.name}`,
+      value: "Variable price · share settlement only",
+      note: note.notes,
+      href: note.edgarUrl,
+    });
+  }
+
+  const usableRemaining = [...atms, ...elocs, ...shelves.filter((item) => !item.resaleRegistration)]
     .filter((item) => item.usable)
     .reduce((sum, item) => sum + (item.remainingDollars ?? 0), 0);
   if (input.profile.marketCap != null && input.profile.marketCap > 0 && usableRemaining > 0) {
@@ -176,13 +224,13 @@ function scoreOfferingAbility(input: AnalysisInput): ScoreCard {
   }
 
   const level: ScoreLevel = fired.length > 0 ? "High" : "Low";
-  const shelfRemaining = sumRemaining(shelves.filter((item) => item.usable));
+  const shelfRemaining = sumRemaining(shelves.filter((item) => item.usable && !item.resaleRegistration));
   const atmRemaining = sumRemaining(atms.filter((item) => item.usable));
   const elocRemaining = sumRemaining(elocs.filter((item) => item.usable));
   const numericLine = `Shelf remaining ${blankOrMoney(shelfRemaining)} + ATM remaining ${blankOrMoney(atmRemaining)} + ELOC remaining ${blankOrMoney(elocRemaining)} → Offering Ability ${level.toUpperCase()} because ${
     level === "High"
-      ? fired[0]
-      : `none of the paths clear (ATM/ELOC ≥ ${formatUsd(THRESHOLDS.facilityUsd)}, shelf remaining ≥ ${formatUsd(THRESHOLDS.shelfUsd)}, near-term ≥ ${THRESHOLDS.nearTermRatio * 100}%, or headroom ≥ ${THRESHOLDS.headroomMultiple}× with a recent raise)`
+      ? fired.join("; ")
+      : `none of the paths clear (ATM/ELOC ≥ ${formatUsd(THRESHOLDS.facilityUsd)}, shelf remaining ≥ ${formatUsd(THRESHOLDS.shelfUsd)}, near-term ≥ ${THRESHOLDS.nearTermRatio * 100}%, headroom ≥ ${THRESHOLDS.headroomMultiple}× with a recent raise, resale registration ≥ ${THRESHOLDS.overhangRatio * 100}% of shares outstanding, or an open variable-price share-settled note in the lookback)`
   }.`;
 
   return {
@@ -195,13 +243,15 @@ function scoreOfferingAbility(input: AnalysisInput): ScoreCard {
     decision:
       level === "High"
         ? `High because ${fired.join("; ")}.`
-        : `Low because no ATM or ELOC remainder is ≥ ${formatUsdExact(THRESHOLDS.facilityUsd)}, no usable shelf remainder is ≥ ${formatUsdExact(THRESHOLDS.shelfUsd)}, near-term issuance is under ${THRESHOLDS.nearTermRatio * 100}%, and the authorized-headroom rule did not clear.`,
+        : `Low because no ATM or ELOC remainder is ≥ ${formatUsdExact(THRESHOLDS.facilityUsd)}, no usable shelf remainder is ≥ ${formatUsdExact(THRESHOLDS.shelfUsd)}, near-term issuance is under ${THRESHOLDS.nearTermRatio * 100}%, the authorized-headroom rule did not clear, no F-3/S-3 resale block is ≥ ${THRESHOLDS.overhangRatio * 100}% of shares outstanding, and there is no open variable-price share-settled convertible in the lookback.`,
     inputs,
     sources: dedupeSources([
       ...shelves.map(linkFromInstrument),
       ...atms.map(linkFromInstrument),
       ...elocs.map(linkFromInstrument),
-      ...filingsMatching(input, /^(S-3|S-3\/A|S-3ASR|F-3|F-3ASR|424B|S-1|10-Q|10-K)/),
+      ...openConverts.map(linkFromInstrument),
+      ...resales.map(linkFromInstrument),
+      ...filingsMatching(input, /^(S-3|S-3\/A|S-3ASR|F-3|F-3ASR|424B|S-1|6-K|8-K|10-Q|10-K|20-F|40-F)/),
     ]),
   };
 }
@@ -239,7 +289,7 @@ function scoreOverhead(input: AnalysisInput): ScoreCard {
       inputs,
       sources: dedupeSources([
         ...parts.map(linkFromInstrument),
-        ...filingsMatching(input, /^(10-Q|10-K|S-1|S-3)/),
+        ...filingsMatching(input, /^(10-Q|10-K|20-F|40-F|6-K|S-1|S-3|F-3)/),
       ]),
     };
   }
@@ -268,7 +318,7 @@ function scoreOverhead(input: AnalysisInput): ScoreCard {
     inputs,
     sources: dedupeSources([
       ...parts.map(linkFromInstrument),
-      ...filingsMatching(input, /^(10-Q|10-K|S-1|S-3)/),
+      ...filingsMatching(input, /^(10-Q|10-K|20-F|40-F|6-K|S-1|S-3|F-3)/),
     ]),
   };
 }
@@ -297,7 +347,7 @@ function scoreHistorical(input: AnalysisInput): ScoreCard {
     {
       label: "Equity raises in the window",
       value: String(raises.length),
-      note: "PIPE, registered offerings, ATM draws, and ELOC draws.",
+      note: "PIPE, registered offerings, ATM draws, ELOC draws, convertible notes, and other share-settled notes.",
       href: raises[0]?.edgarUrl ?? null,
     },
     {
@@ -338,13 +388,14 @@ function scoreHistorical(input: AnalysisInput): ScoreCard {
           ? { form: event.label, filed: event.date, description: event.notes ?? event.label, url: event.edgarUrl }
           : null,
       ),
-      ...filingsMatching(input, /^(8-K|424B|S-1|S-3|10-Q|10-K)/),
+      ...filingsMatching(input, /^(8-K|6-K|424B|S-1|S-3|F-3|10-Q|10-K|20-F|40-F)/),
     ]),
   };
 }
 
 function scoreCashNeed(input: AnalysisInput): ScoreCard {
   const cash = deriveCash(input.cash);
+  const money = (value: number | null) => formatMoney(value, input.cash.currency);
   const fired: string[] = [];
   if (input.cash.goingConcern) fired.push("going-concern language is present");
   if (cash.runwayMonths != null && cash.runwayMonths <= THRESHOLDS.runwayMonths) {
@@ -356,7 +407,7 @@ function scoreCashNeed(input: AnalysisInput): ScoreCard {
   const runwayText =
     cash.runwayMonths == null
       ? "runway not computed"
-      : `${formatUsdExact(cash.unrestrictedCash)} unrestricted / ${formatUsdExact(cash.monthlyBurn)} per month = ${cash.runwayMonths.toFixed(1)} months`;
+      : `${money(cash.unrestrictedCash)} unrestricted / ${money(cash.monthlyBurn)} per month = ${cash.runwayMonths.toFixed(1)} months`;
   const numericLine = `${runwayText}; going concern ${input.cash.goingConcern ? "yes" : "no"} → Cash Need ${level.toUpperCase()} because ${
     level === "High"
       ? fired.join(" and ")
@@ -367,20 +418,23 @@ function scoreCashNeed(input: AnalysisInput): ScoreCard {
   const inputs: EvidenceInput[] = [
     {
       label: "Cash, equivalents, and restricted cash",
-      value: formatUsdExact(input.cash.totalCash),
+      value: money(input.cash.totalCash),
       note: input.cash.asOf ? `As of ${formatDate(input.cash.asOf)}.` : null,
       href: input.cash.sourceUrl,
     },
     {
       label: "Restricted cash",
-      value: formatUsdExact(input.cash.restrictedCash),
+      value: money(input.cash.restrictedCash),
       note: null,
       href: input.cash.sourceUrl,
     },
     {
       label: "Unrestricted cash",
-      value: formatUsdExact(cash.unrestrictedCash),
-      note: "Total cash minus restricted cash when both are known.",
+      value: money(cash.unrestrictedCash),
+      note:
+        input.cash.restrictedIncludedInTotal === false
+          ? "Restricted cash is presented separately, so it is shown and not subtracted."
+          : "Total cash minus restricted cash when both are known and the total includes restricted cash.",
       href: input.cash.sourceUrl,
     },
     {
@@ -388,13 +442,13 @@ function scoreCashNeed(input: AnalysisInput): ScoreCard {
       value:
         input.cash.operatingCashFlow == null
           ? "—"
-          : `${formatUsdExact(input.cash.operatingCashFlow)} over ${input.cash.operatingCashFlowMonths ?? "—"} months`,
+          : `${money(input.cash.operatingCashFlow)} over ${input.cash.operatingCashFlowMonths ?? "—"} months`,
       note: "Negative means cash used in operations.",
       href: input.cash.sourceUrl,
     },
     {
       label: "Monthly burn",
-      value: formatUsdExact(cash.monthlyBurn),
+      value: money(cash.monthlyBurn),
       note: "Absolute operating outflow divided by the period length. Blank when operations did not use cash.",
       href: input.cash.sourceUrl,
     },
@@ -426,13 +480,13 @@ function scoreCashNeed(input: AnalysisInput): ScoreCard {
     sources: dedupeSources([
       input.cash.sourceUrl
         ? {
-            form: "10-Q/10-K",
+            form: input.cash.sourceForm ?? "10-Q/10-K",
             filed: input.cash.asOf ?? "",
             description: input.cash.sourceLabel ?? "Cash note",
             url: input.cash.sourceUrl,
           }
         : null,
-      ...filingsMatching(input, /^(10-Q|10-K)/),
+      ...filingsMatching(input, /^(10-Q|10-K|20-F|40-F|6-K)/),
     ]),
   };
 }
@@ -521,6 +575,14 @@ export function buildLikelihood(input: AnalysisInput, scores: ScoreCard[]): stri
   if (ratio != null && ratio >= THRESHOLDS.overhangRatio) {
     sentences.push(
       `Warrant, convertible, and resale overhang is about ${formatPct(ratio)} of shares outstanding.`,
+    );
+  }
+  const variableNote = input.instruments.find(
+    (item) => item.kind === "convertible" && item.usable && item.variableConversion && item.shareSettled,
+  );
+  if (variableNote) {
+    sentences.push(
+      "An outstanding convertible is variable-priced and settled in shares, so the company can issue stock without a new primary shelf.",
     );
   }
   if (level.historical === "High") {

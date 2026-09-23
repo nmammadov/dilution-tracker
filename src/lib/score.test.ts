@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { assembleReport } from "./assemble";
-import { decoyFixture } from "./fixtures";
+import { decoyFixture, imccFixture } from "./fixtures";
+import { interpretFilings } from "./liveFacts";
 import { deriveCash } from "./metrics";
 import {
   detectGoingConcern,
   extractAtmAgent,
   extractAtmProgramDollars,
+  extractConsolidation,
+  extractConvertibleNote,
+  extractInlineCash,
+  extractResaleShareCount,
   extractShelfUnsoldDollars,
   isoFromLongDate,
+  mentionsAtmProgram,
 } from "./parse";
 import { scoreAnalysis } from "./score";
 import type { AnalysisInput, Instrument } from "./types";
@@ -272,6 +278,167 @@ describe("scoring rules", () => {
   });
 });
 
+describe("IMCC fixture", () => {
+  it("elevates converts and the F-3 resale instead of reading a clean Low", () => {
+    const facts = imccFixture();
+    const report = assembleReport(facts, "fixture", "test");
+    const scored = Object.fromEntries(report.scores.map((score) => [score.id, score.level]));
+    assert.deepEqual(scored, {
+      overall: "High",
+      offeringAbility: "High",
+      overheadSupply: "High",
+      historical: "High",
+      cashNeed: "High",
+    });
+    const ability = report.scores.find((score) => score.id === "offeringAbility");
+    assert.match(ability?.numericLine ?? "", /93\.1%/);
+    assert.match(ability?.numericLine ?? "", /575,898/);
+    assert.match(ability?.decision ?? "", /6 open variable-price share-settled convertible/);
+    assert.ok(ability?.sources.some((source) => source.url.includes("000117891326004396")));
+    assert.ok(ability?.sources.some((source) => source.url.includes("000117891326003150")));
+    const overhead = report.scores.find((score) => score.id === "overheadSupply");
+    assert.match(overhead?.numericLine ?? "", /771,617 \/ 618,899/);
+    assert.match(overhead?.numericLine ?? "", /125%/);
+    const historical = report.scores.find((score) => score.id === "historical");
+    assert.match(historical?.numericLine ?? "", /6 equity raises/);
+    assert.match(historical?.numericLine ?? "", /1 reverse splits/);
+    const cashNeed = report.scores.find((score) => score.id === "cashNeed");
+    assert.match(cashNeed?.numericLine ?? "", /C\$1,617,000/);
+    assert.match(cashNeed?.numericLine ?? "", /7\.2 months/);
+    assert.match(cashNeed?.numericLine ?? "", /going concern yes/i);
+    assert.equal(facts.cash.currency, "CAD");
+    assert.equal(facts.cash.totalCash, 1_617_000);
+    assert.equal(facts.cash.restrictedCash, 124_000);
+    assert.equal(deriveCash(facts.cash).unrestrictedCash, 1_617_000);
+    assert.ok(facts.instruments.some((item) => item.resaleRegistration && item.overhangShares === 575_898));
+    assert.ok(
+      facts.instruments.some(
+        (item) => item.kind === "convertible" && item.issuedOn === "2026-09-02" && item.variableConversion && item.shareSettled,
+      ),
+    );
+  });
+});
+
+describe("convertible and resale rules", () => {
+  it("treats a small variable share-settled note as Offering Ability High", () => {
+    const scored = levels(
+      input({
+        analysisAsOf: "2026-09-23",
+        instruments: [
+          {
+            kind: "convertible",
+            name: "2026-09-02 convertible note",
+            remainingDollars: null,
+            remainingShares: null,
+            overhangShares: null,
+            nearTermIssuanceShares: null,
+            usable: true,
+            paused: false,
+            variableConversion: true,
+            shareSettled: true,
+            issuedOn: "2026-09-02",
+            status: "Share settlement only",
+            edgarUrl: "https://www.sec.gov/Archives/edgar/data/1792030/000117891326004396/zk2636065.htm",
+            notes: "Principal US$225,000.",
+          },
+        ],
+        events: [raise("2026-09-02")],
+        cash: quietCash(24),
+      }),
+    );
+    assert.equal(scored.offeringAbility, "High");
+    assert.equal(scored.historical, "Low");
+    assert.equal(scored.overall, "Low");
+  });
+
+  it("does not treat a cash-repayable fixed convert as an issuance path", () => {
+    const scored = levels(
+      input({
+        instruments: [
+          {
+            kind: "convertible",
+            name: "Fixed convert",
+            remainingDollars: 225_000,
+            remainingShares: null,
+            overhangShares: 10_000,
+            nearTermIssuanceShares: null,
+            usable: true,
+            paused: false,
+            variableConversion: false,
+            shareSettled: false,
+            issuedOn: "2026-09-02",
+            status: "Repayable in cash",
+            edgarUrl: null,
+            notes: null,
+          },
+        ],
+        events: [],
+        cash: quietCash(24),
+      }),
+    );
+    assert.equal(scored.offeringAbility, "Low");
+    assert.equal(scored.overheadSupply, "Low");
+  });
+
+  it("counts two convertible-note raises and a large resale block", () => {
+    const scored = levels(
+      input({
+        instruments: [
+          {
+            kind: "shelf",
+            name: "F-3 resale",
+            remainingDollars: null,
+            remainingShares: 600_000,
+            overhangShares: 600_000,
+            nearTermIssuanceShares: null,
+            usable: false,
+            paused: false,
+            resaleRegistration: true,
+            status: "Resale",
+            edgarUrl: null,
+            notes: null,
+          },
+        ],
+        events: [
+          { ...raise("2026-04-07"), label: "Convertible note" },
+          { ...raise("2026-05-07"), label: "Convertible note" },
+        ],
+        cash: quietCash(24),
+      }),
+    );
+    assert.equal(scored.historical, "High");
+    assert.equal(scored.offeringAbility, "High");
+    assert.equal(scored.overheadSupply, "High");
+  });
+
+  it("keeps a small resale block below the 50% line", () => {
+    const scored = levels(
+      input({
+        instruments: [
+          {
+            kind: "shelf",
+            name: "F-3 resale",
+            remainingDollars: null,
+            remainingShares: 100_000,
+            overhangShares: 100_000,
+            nearTermIssuanceShares: null,
+            usable: false,
+            paused: false,
+            resaleRegistration: true,
+            status: "Resale",
+            edgarUrl: null,
+            notes: null,
+          },
+        ],
+        events: [],
+        cash: quietCash(24),
+      }),
+    );
+    assert.equal(scored.offeringAbility, "Low");
+    assert.equal(scored.overheadSupply, "Low");
+  });
+});
+
 describe("filing text parsers", () => {
   it("detects going-concern language and ignores a denial", () => {
     assert.equal(
@@ -294,6 +461,96 @@ describe("filing text parsers", () => {
 
   it("parses a long date", () => {
     assert.equal(isoFromLongDate("August 15, 2025"), "2025-08-15");
+  });
+
+  it("flags significant doubt for a foreign issuer and ignores a denial", () => {
+    assert.equal(
+      detectGoingConcern(
+        "These conditions raise uncertainties that cast significant doubt as to whether the Company will be able to continue as a going concern.",
+      ),
+      true,
+    );
+    assert.equal(
+      detectGoingConcern("Management concluded there is no significant doubt about continuing as a going concern."),
+      false,
+    );
+  });
+
+  it("reads a share-settled variable note, a resale count, and a 30:1 consolidation", () => {
+    const note = extractConvertibleNote(
+      "On September 2, 2026 the Company issued a convertible note in the principal amount of US$225,000 and a warrant to purchase up to 77,855 Common Shares at an exercise price of CAD$4.63. The Offering closed on September 2, 2026. The Note is not repayable in cash and will be satisfied solely through the issuance of Common Shares. The Conversion Price is the lower of the Fixed Price or ninety percent (90%) of the lowest daily volume-weighted average price. The Fixed Price set in the Note is US$3.328. The Floor Price set in the Note is US$0.665692.",
+    );
+    assert.equal(note?.principalUsd, 225_000);
+    assert.equal(note?.warrantShares, 77_855);
+    assert.equal(note?.date, "2026-09-02");
+    assert.equal(note?.variableConversion, true);
+    assert.equal(note?.shareSettled, true);
+    assert.equal(note?.floorPrice, "0.665692");
+    assert.equal(
+      extractResaleShareCount(
+        "This prospectus relates to the resale by the selling shareholder of up to 17,276,931 common shares.",
+      ),
+      17_276_931,
+    );
+    assert.equal(extractResaleShareCount("We may sell up to 17,276,931 common shares from time to time."), null);
+    const split = extractConsolidation(
+      "Shares commenced trading on a 30:1 post-consolidated basis. The Common Shares were reduced from 18,567,650 to 618,899 Common Shares.",
+    );
+    assert.equal(split?.ratio, 30);
+    assert.equal(split?.toShares, 618_899);
+    assert.equal(split?.completed, true);
+  });
+
+  it("does not treat a biography mention of ATM as a program", () => {
+    assert.equal(mentionsAtmProgram("product development for cryptocurrency ATM technologies"), false);
+    assert.equal(mentionsAtmProgram("at-the-market offering agreement with a sales agent"), true);
+  });
+
+  it("reads IFRS inline XBRL cash without rescaling", () => {
+    const facts = extractInlineCash(`
+      <context id="C_20260630"><period><instant>2026-06-30</instant></period></context>
+      <context id="C_20260101to20260630"><period><startDate>2026-01-01</startDate><endDate>2026-06-30</endDate></period></context>
+      <context id="C_proforma"><period><instant>2026-06-30</instant></period><segment>pro forma</segment></context>
+      <ifrs-full:CashAndCashEquivalents contextRef="C_20260630" unitRef="CAD">1617000</ifrs-full:CashAndCashEquivalents>
+      <ifrs-full:CashAndCashEquivalents contextRef="C_proforma" unitRef="CAD">999</ifrs-full:CashAndCashEquivalents>
+      <ifrs-full:CurrentRestrictedCashAndCashEquivalents contextRef="C_20260630" unitRef="CAD">124000</ifrs-full:CurrentRestrictedCashAndCashEquivalents>
+      <ifrs-full:CashFlowsFromUsedInOperatingActivities contextRef="C_20260101to20260630" unitRef="CAD">-1339000</ifrs-full:CashFlowsFromUsedInOperatingActivities>
+    `);
+    assert.equal(facts?.totalCash, 1_617_000);
+    assert.equal(facts?.restrictedCash, 124_000);
+    assert.equal(facts?.operatingCashFlow, -1_339_000);
+    assert.equal(facts?.currency, "CAD");
+    assert.equal(facts?.restrictedSeparate, true);
+  });
+
+  it("adjusts a pre-consolidation resale count and keeps a later warrant whole", () => {
+    const interpreted = interpretFilings({
+      analysisAsOf: "2026-09-23",
+      reports: [
+        {
+          filed: "2026-08-27",
+          url: "https://www.sec.gov/example-split",
+          text: "30:1 consolidation. The Common Shares were reduced from 18,567,650 to 618,899 Common Shares.",
+        },
+        {
+          filed: "2026-09-02",
+          url: "https://www.sec.gov/example-note",
+          text: "On September 2, 2026 the Company issued a convertible note in the principal amount of US$225,000 and a warrant to purchase up to 77,855 Common Shares. The Offering closed on September 2, 2026. The Note is not repayable in cash. The price uses the lowest daily volume-weighted average price.",
+        },
+      ],
+      resale: {
+        filed: "2026-06-09",
+        url: "https://www.sec.gov/example-f3",
+        text: "This prospectus relates to the resale by the selling shareholder of up to 17,276,931 common shares.",
+      },
+      shareCandidates: [],
+    });
+    assert.equal(interpreted.sharesOutstanding, 618_899);
+    const resale = interpreted.instruments.find((item) => item.resaleRegistration);
+    assert.equal(resale?.overhangShares, 575_898);
+    const warrant = interpreted.instruments.find((item) => item.kind === "warrant");
+    assert.equal(warrant?.overhangShares, 77_855);
+    assert.equal(interpreted.events.filter((event) => event.kind === "equity-raise").length, 1);
   });
 
   it("reads shelf unsold dollars and the ATM agent from registration prose", () => {

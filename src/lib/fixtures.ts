@@ -278,8 +278,207 @@ export function decoyFixture(): AnalysisInput {
   };
 }
 
+const IMCC_SEP2 = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326004396/zk2636065.htm";
+const IMCC_F3 = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326003150/zk2635519.htm";
+const IMCC_SPLIT = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326004289/exhibit_99-1.htm";
+const IMCC_Q2 = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326004126/zk2635894.htm";
+const IMCC_20F = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326001877/zk2634906.htm";
+const IMCC_APR = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326002019/zk2635038.htm";
+const IMCC_MAY = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326002452/zk2635230.htm";
+const IMCC_JUN = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326003087/zk2635492.htm";
+const IMCC_JUL = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326003389/zk2635630.htm";
+const IMCC_AUG = "https://www.sec.gov/Archives/edgar/data/1792030/000117891326003959/zk2635890.htm";
+
+/**
+ * Curated from IM Cannabis public EDGAR filings. Scores are not stored here.
+ * Share counts that predate the August 27, 2026 30:1 consolidation are divided
+ * by 30 because that filing states the ratio. Principal amounts are the US$
+ * figures printed in the 6-Ks. No conversion share count is estimated.
+ */
+export function imccFixture(): AnalysisInput {
+  const resaleShares = Math.round(17_276_931 / 30);
+  const julyWarrants = Math.round(1_483_386 / 30);
+  const augustWarrants = Math.round(2_052_545 / 30);
+  return {
+    analysisAsOf: "2026-09-23",
+    caveats: [
+      "IMCC figures are a curated reading of public filings. Cash stays in Canadian dollars. Nothing here is converted to US dollars, and no share count is estimated by dividing a note principal by the floor price.",
+      "The June 9, 2026 Form F-3 registers up to 17,276,931 common shares for resale, against 9,016,539 shares outstanding as of June 8, 2026. The August 27, 2026 6-K states a 30:1 consolidation that reduced common shares from 18,567,650 to 618,899. Resale overhang uses 17,276,931 / 30.",
+      "Warrants on the April, May, and June notes are inside that F-3 total and are not counted again. The July 1 and August 7 warrant counts are pre-consolidation, so they are divided by 30. The September 2 warrant for 77,855 shares is already on a post-consolidation basis.",
+      "Each 2026 convertible note is treated as still outstanding because these filings do not say it was repaid or fully converted. The September 2, 2026 note is the clearest open issuance: variable conversion price and share settlement only.",
+      "Shares outstanding are the August 27, 2026 post-consolidation count. Issuances after that date are not in the count.",
+    ],
+    profile: {
+      symbol: "IMCC",
+      name: "IM Cannabis Corp.",
+      cik: "0001792030",
+      exchange: "Nasdaq",
+      sic: "2833",
+      sicDescription: "Medicinal Chemicals & Botanical Products",
+      sharesOutstanding: 618_899,
+      sharesOutstandingAsOf: "2026-08-27",
+      floatShares: null,
+      authorizedShares: null,
+      price: null,
+      marketCap: null,
+    },
+    cash: {
+      asOf: "2026-06-30",
+      totalCash: 1_617_000,
+      restrictedCash: 124_000,
+      operatingCashFlow: -1_339_000,
+      operatingCashFlowMonths: 6,
+      workingCapital: null,
+      goingConcern: true,
+      goingConcernNote:
+        "The June 30, 2026 interim financial statements, furnished on Form 6-K on August 13, 2026, say these conditions raise uncertainties that cast significant doubt on the ability to continue as a going concern. The March 30, 2026 Form 20-F also says the conditions raise substantial doubt about continuing as a going concern.",
+      sourceLabel:
+        "Form 6-K furnished August 13, 2026, inline XBRL for the six months ended June 30, 2026",
+      sourceUrl: IMCC_Q2,
+      currency: "CAD",
+      restrictedIncludedInTotal: false,
+      sourceForm: "6-K",
+    },
+    instruments: [
+      {
+        kind: "shelf",
+        name: "June 9, 2026 Form F-3 resale",
+        remainingDollars: null,
+        remainingShares: resaleShares,
+        overhangShares: resaleShares,
+        nearTermIssuanceShares: null,
+        usable: false,
+        paused: false,
+        resaleRegistration: true,
+        status: "Resale prospectus filed June 9, 2026; EFFECT June 16, 2026",
+        edgarUrl: IMCC_F3,
+        notes:
+          "The prospectus relates to the resale of up to 17,276,931 common shares by the selling shareholder: conversion shares and warrants on the April 2026 US$250,000 note, the May 2026 US$300,000 note, and the June 2026 US$225,000 note. It is not a primary shelf and it states no remaining dollar capacity. After the 30:1 consolidation, 17,276,931 / 30 = 575,898 shares. Those warrant and conversion shares are not counted a second time.",
+      },
+      warrantRow("2026-07-01", julyWarrants, 1_483_386, "0.22", IMCC_JUL),
+      warrantRow("2026-08-07", augustWarrants, 2_052_545, "0.17", IMCC_AUG),
+      {
+        kind: "warrant",
+        name: "2026-09-02 note warrant",
+        remainingDollars: null,
+        remainingShares: 77_855,
+        overhangShares: 77_855,
+        nearTermIssuanceShares: 77_855,
+        usable: false,
+        paused: false,
+        issuedOn: "2026-09-02",
+        status: "Exercisable on issuance, as stated in the September 2, 2026 6-K",
+        edgarUrl: IMCC_SEP2,
+        notes:
+          "Warrant to purchase up to 77,855 common shares at CAD$4.63. The note closed after the 30:1 consolidation, so this count is not divided.",
+      },
+      ...[
+        ["2026-04-07", 250_000, IMCC_APR, "272,861 shares at CAD$0.47"],
+        ["2026-05-07", 300_000, IMCC_MAY, "1,127,820 shares at CAD$0.36"],
+        ["2026-06-03", 225_000, IMCC_JUN, "781,250 shares at CAD$0.40"],
+        ["2026-07-01", 225_000, IMCC_JUL, "1,483,386 shares at CAD$0.22, before the 30:1 consolidation"],
+        ["2026-08-07", 250_000, IMCC_AUG, "2,052,545 shares at CAD$0.17, before the 30:1 consolidation"],
+        ["2026-09-02", 225_000, IMCC_SEP2, "77,855 shares at CAD$4.63"],
+      ].map(([date, principal, url, warrant]) =>
+        convertRow(String(date), Number(principal), String(url), String(warrant)),
+      ),
+    ],
+    events: [
+      raiseRow("2026-04-07", 250_000, IMCC_APR, "April 6, 2026 6-K. The June 9, 2026 F-3 says this offering closed on April 7, 2026. 10% original issue discount. Warrant for 272,861 shares."),
+      raiseRow("2026-05-07", 300_000, IMCC_MAY, "May 7, 2026 6-K. Closed the same day. Warrant for 1,127,820 shares."),
+      raiseRow("2026-06-03", 225_000, IMCC_JUN, "June 3, 2026 6-K. Closed the same day. Warrant for 781,250 shares."),
+      raiseRow("2026-07-01", 225_000, IMCC_JUL, "July 1, 2026 6-K. Closed the same day. Warrant for 1,483,386 shares."),
+      raiseRow("2026-08-07", 250_000, IMCC_AUG, "August 7, 2026 6-K. Closed the same day. Warrant for 2,052,545 shares."),
+      raiseRow("2026-09-02", 225_000, IMCC_SEP2, "September 2, 2026 6-K. Principal US$225,000, net proceeds US$202,500. Fixed price US$3.328, variable price 90% of the 20-day lowest VWAP, floor US$0.665692. Share settlement only. Warrant for 77,855 shares at CAD$4.63. The company agreed to file an F-3 resale registration."),
+      {
+        date: "2026-08-27",
+        kind: "reverse-split",
+        label: "30-for-1 share consolidation",
+        proceeds: null,
+        shares: 618_899,
+        price: null,
+        edgarUrl: IMCC_SPLIT,
+        notes:
+          "August 27, 2026 6-K press release: common shares were reduced from 18,567,650 to 618,899 on a 30:1 basis. Outstanding convertible securities were proportionately adjusted.",
+      },
+    ],
+    filings: [
+      { form: "6-K", filed: "2026-09-02", description: "US$225,000 convertible note and 77,855 warrants", url: IMCC_SEP2 },
+      { form: "F-3", filed: "2026-06-09", description: "Resale prospectus for up to 17,276,931 common shares", url: IMCC_F3 },
+      { form: "6-K", filed: "2026-08-27", description: "30:1 share consolidation, 618,899 shares outstanding", url: IMCC_SPLIT },
+      { form: "6-K", filed: "2026-08-13", description: "Interim financials for the six months ended June 30, 2026", url: IMCC_Q2 },
+      { form: "20-F", filed: "2026-03-30", description: "Annual report for the year ended December 31, 2025", url: IMCC_20F },
+      { form: "6-K", filed: "2026-08-07", description: "US$250,000 convertible note", url: IMCC_AUG },
+      { form: "6-K", filed: "2026-07-01", description: "US$225,000 convertible note", url: IMCC_JUL },
+      { form: "6-K", filed: "2026-06-03", description: "US$225,000 convertible note", url: IMCC_JUN },
+      { form: "6-K", filed: "2026-05-07", description: "US$300,000 convertible note", url: IMCC_MAY },
+      { form: "6-K", filed: "2026-04-06", description: "US$250,000 convertible note", url: IMCC_APR },
+    ],
+  };
+}
+
+function convertRow(date: string, principal: number, url: string, warrant: string): AnalysisInput["instruments"][number] {
+  const floor =
+    date === "2026-09-02"
+      ? " Fixed conversion price US$3.328. Floor price US$0.665692."
+      : "";
+  return {
+    kind: "convertible",
+    name: `${date} convertible note`,
+    remainingDollars: null,
+    remainingShares: null,
+    overhangShares: null,
+    nearTermIssuanceShares: null,
+    usable: true,
+    paused: false,
+    variableConversion: true,
+    shareSettled: true,
+    issuedOn: date,
+    status: "Variable conversion price, share settlement only",
+    edgarUrl: url,
+    notes: `Principal US$${principal.toLocaleString("en-US")} as stated in the 6-K. 8% interest. Original issue discount, purchase price 90% of principal. Not repayable in cash. Conversion price is the lower of a fixed price and 90% of the lowest 20-day VWAP.${floor} Accompanying warrant: ${warrant}. The 6-K does not state a maximum conversion share count, so none is estimated.`,
+  };
+}
+
+function warrantRow(
+  date: string,
+  adjusted: number,
+  printed: number,
+  exerciseCad: string,
+  url: string,
+): AnalysisInput["instruments"][number] {
+  return {
+    kind: "warrant",
+    name: `${date} note warrant`,
+    remainingDollars: null,
+    remainingShares: adjusted,
+    overhangShares: adjusted,
+    nearTermIssuanceShares: adjusted,
+    usable: false,
+    paused: false,
+    issuedOn: date,
+    status: `Pre-consolidation count ${printed.toLocaleString("en-US")} divided by the 30:1 ratio`,
+    edgarUrl: url,
+    notes: `The 6-K states a warrant for ${printed.toLocaleString("en-US")} shares at CAD$${exerciseCad}. The August 27, 2026 consolidation says outstanding convertible securities were proportionately adjusted, so overhang uses ${adjusted.toLocaleString("en-US")} shares.`,
+  };
+}
+
+function raiseRow(date: string, proceeds: number, url: string, notes: string): AnalysisInput["events"][number] {
+  return {
+    date,
+    kind: "equity-raise",
+    label: "Convertible note",
+    proceeds,
+    shares: null,
+    price: null,
+    edgarUrl: url,
+    notes,
+  };
+}
+
 const FIXTURES: Record<string, () => AnalysisInput> = {
   DCOY: decoyFixture,
+  IMCC: imccFixture,
 };
 
 export function getFixture(symbol: string): AnalysisInput | null {

@@ -1,8 +1,9 @@
 import type { AnalysisInput, CashFacts, CashView, Instrument } from "./types";
 
 export function deriveCash(cash: CashFacts): CashView {
+  const subtractRestricted = cash.restrictedIncludedInTotal !== false;
   const unrestrictedCash =
-    cash.totalCash != null && cash.restrictedCash != null
+    cash.totalCash != null && cash.restrictedCash != null && subtractRestricted
       ? Math.max(0, cash.totalCash - cash.restrictedCash)
       : cash.totalCash;
 

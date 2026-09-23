@@ -67,7 +67,7 @@ export async function getTickerReport(rawSymbol: string): Promise<ReportResult> 
       report: assembleReport(
         edgar.analysis,
         "live",
-        "Best-effort read of EDGAR submissions, company facts, and the latest 10-Q or 10-K. Blank capacity does not raise a score.",
+        "Best-effort read of EDGAR submissions, company facts, and the latest 10-Q, 10-K, 20-F, or 40-F, plus recent 6-Ks and an F-3 or S-3 when one is on file. Blank capacity does not raise a score. Amounts stay in the filing currency.",
       ),
     };
   }
@@ -75,7 +75,7 @@ export async function getTickerReport(rawSymbol: string): Promise<ReportResult> 
   return {
     ok: false,
     status: 502,
-    message: `EDGAR could not be reached for ${symbol}, and there is no offline fixture. DCOY still loads from the local fixture.`,
+    message: `EDGAR could not be reached for ${symbol}, and there is no offline fixture. DCOY and IMCC still load from local fixtures.`,
   };
 }
 

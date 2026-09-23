@@ -1,4 +1,5 @@
 import { padCik } from "./format";
+import { interpretFilings, type CurrentReport } from "./liveFacts";
 import {
   detectGoingConcern,
   extractAtmAgent,
@@ -6,11 +7,14 @@ import {
   extractAuthorizedShares,
   extractCoverShares,
   extractElocRemaining,
+  extractInlineCash,
   extractReverseSplits,
   extractShelfUnsoldDollars,
   extractWarrantCount,
+  mentionsAtmProgram,
   periodMonths,
   stripHtml,
+  type InlineCashFacts,
 } from "./parse";
 import type { AnalysisInput, CapitalEvent, FilingLink, Instrument } from "./types";
 
@@ -40,7 +44,7 @@ interface FactRow {
 }
 
 const INTERESTING =
-  /^(10-K|10-K\/A|10-Q|10-Q\/A|8-K|8-K\/A|S-1|S-1\/A|S-3|S-3\/A|S-3ASR|F-1|F-3|F-3ASR|424B\d|EFFECT)$/;
+  /^(10-K|10-K\/A|10-Q|10-Q\/A|20-F|20-F\/A|40-F|40-F\/A|8-K|8-K\/A|6-K|6-K\/A|S-1|S-1\/A|S-3|S-3\/A|S-3ASR|F-1|F-3|F-3\/A|F-3ASR|424B\d|EFFECT)$/;
 
 let tickerCache: Map<string, { cik: string; title: string }> | null = null;
 
@@ -74,30 +78,50 @@ export async function fetchEdgarBundle(
       sicDescription: stringField(submissions?.sicDescription),
     };
 
-    const cashFact = latestMonetary(facts, [
+    const combinedCash = latestMoney(facts, ["us-gaap"], [
       "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
-      "CashAndCashEquivalentsAtCarryingValue",
     ]);
-    const plainCash = latestMonetary(facts, ["CashAndCashEquivalentsAtCarryingValue"]);
-    const restricted = latestMonetary(facts, [
+    const plainCash = latestMoney(facts, ["us-gaap", "ifrs-full"], [
+      "CashAndCashEquivalentsAtCarryingValue",
+      "CashAndCashEquivalents",
+    ]);
+    const cashPick = newerMoney(combinedCash, plainCash);
+    const cashFact = cashPick?.row ?? null;
+    const restricted = latestMoney(facts, ["us-gaap", "ifrs-full"], [
       "RestrictedCash",
       "RestrictedCashAndCashEquivalents",
       "RestrictedCashCurrent",
       "RestrictedCashAndCashEquivalentsAtCarryingValue",
+      "CurrentRestrictedCashAndCashEquivalents",
     ]);
-    const operating = latestFlow(facts, ["NetCashProvidedByUsedInOperatingActivities"]);
+    const operating = latestFlow(facts, ["NetCashProvidedByUsedInOperatingActivities", "CashFlowsFromUsedInOperatingActivities"]);
     const sharesFact = latestShares(facts, [
       "EntityCommonStockSharesOutstanding",
       "CommonStockSharesOutstanding",
+      "NumberOfSharesOutstanding",
     ]);
 
     let narrative = "";
     let registrationText = "";
+    let resale: { text: string; url: string | null; filed: string | null } | null = null;
+    let reports: CurrentReport[] = [];
+    let inlineCash: (InlineCashFacts & { sourceUrl: string | null; sourceForm: string | null }) | null = null;
     if (options.includeNarrative) {
-      [narrative, registrationText] = await Promise.all([
+      const [narrativeResult, registrationResult, reportResult, inlineResult] = await Promise.all([
         loadLatestNarrative(match.cik, submissions),
-        loadRegistrationText(match.cik, submissions),
+        loadRegistrationFilings(match.cik, submissions),
+        loadCurrentReports(match.cik, submissions),
+        loadInlineCash(match.cik, submissions),
       ]);
+      narrative = narrativeResult;
+      registrationText = registrationResult.map((filing) => filing.text).join("\n");
+      const resaleFiling =
+        registrationResult.find((filing) => filing.form === "F-3" || filing.form === "S-3") ?? null;
+      resale = resaleFiling
+        ? { text: resaleFiling.text, url: resaleFiling.url, filed: resaleFiling.filed }
+        : null;
+      reports = reportResult;
+      inlineCash = inlineResult;
     }
 
     const analysis = buildLiveAnalysis({
@@ -105,12 +129,16 @@ export async function fetchEdgarBundle(
       identity,
       filings,
       cashFact,
-      plainCash,
-      restricted,
+      restricted: restricted?.row ?? null,
       operating,
       sharesFact,
       narrative,
       registrationText,
+      resale,
+      reports,
+      inlineCash,
+      cashCurrency: cashPick?.currency ?? inlineCash?.currency ?? null,
+      restrictedSeparate: (cashPick != null && cashPick.source === "plain") || inlineCash?.restrictedSeparate === true,
     });
 
     return {
@@ -130,38 +158,51 @@ function buildLiveAnalysis(args: {
   identity: NonNullable<EdgarBundle["identity"]>;
   filings: FilingLink[];
   cashFact: FactRow | null;
-  plainCash: FactRow | null;
   restricted: FactRow | null;
   operating: { row: FactRow; months: number } | null;
   sharesFact: FactRow | null;
   narrative: string;
   registrationText: string;
+  resale: { text: string; url: string | null; filed: string | null } | null;
+  reports: CurrentReport[];
+  inlineCash: (InlineCashFacts & { sourceUrl: string | null; sourceForm: string | null }) | null;
+  cashCurrency: "USD" | "CAD" | null;
+  restrictedSeparate: boolean;
 }): AnalysisInput {
   const caveats = [
-    "Live mode is a best-effort read of EDGAR submissions, XBRL company facts, and one periodic report. Unparsed shelf or ATM capacity stays blank and does not raise a score.",
+    "Live mode is a best-effort read of EDGAR submissions, XBRL company facts, the latest periodic report, recent 6-Ks, and an F-3 or S-3 when one is on file. Unparsed shelf or ATM capacity stays blank and does not raise a score. Share counts are taken from filings and are not estimated from a conversion floor.",
   ];
   const text = args.narrative;
   const goingConcern = text ? detectGoingConcern(text) : false;
   if (!text) {
-    caveats.push("The latest 10-Q or 10-K text was not downloaded, so going-concern language was not scanned.");
+    caveats.push("The latest 10-Q, 10-K, 20-F, or 40-F text was not downloaded, so going-concern language was not scanned.");
   }
 
   let totalCash = args.cashFact?.val ?? null;
   let restrictedCash = args.restricted?.val ?? null;
-  if (
-    totalCash != null &&
-    args.plainCash?.val != null &&
-    args.cashFact?.end &&
-    args.plainCash.end &&
-    args.cashFact.end === args.plainCash.end &&
-    totalCash > args.plainCash.val &&
-    restrictedCash == null
-  ) {
-    restrictedCash = totalCash - args.plainCash.val;
+  let operatingCashFlow = args.operating?.row.val ?? null;
+  let operatingMonths = args.operating?.months ?? null;
+  let cashAsOf = args.cashFact?.end ?? null;
+  let currency = args.cashCurrency;
+  let restrictedSeparate = args.restrictedSeparate;
+  const inline = args.inlineCash;
+  if (inline && inline.asOf && (!cashAsOf || inline.asOf > cashAsOf)) {
+    totalCash = inline.totalCash;
+    restrictedCash = inline.restrictedCash;
+    operatingCashFlow = inline.operatingCashFlow;
+    operatingMonths = periodMonths(inline.operatingStart ?? undefined, inline.operatingEnd ?? undefined);
+    cashAsOf = inline.asOf;
+    currency = inline.currency ?? currency;
+    restrictedSeparate = inline.restrictedSeparate;
+    caveats.push(
+      `Cash uses the inline XBRL in a periodic report dated ${inline.asOf}, which is later than the company-facts cash period.`,
+    );
+  }
+  if (currency === "CAD") {
+    caveats.push("Cash figures are Canadian dollars as reported. They are not converted to US dollars.");
   }
 
   const cover = text ? extractCoverShares(text) : null;
-  const sharesOutstanding = cover?.shares ?? args.sharesFact?.val ?? null;
   const authorizedShares = text ? extractAuthorizedShares(text) : null;
   const warrantCount = text ? extractWarrantCount(text) : null;
   const elocRemaining = text ? extractElocRemaining(text) : null;
@@ -197,7 +238,7 @@ function buildLiveAnalysis(args: {
     });
   }
 
-  if (/at[- ]the[- ]market|\bATM\b/i.test(text)) {
+  if (mentionsAtmProgram(text)) {
     instruments.push({
       kind: "atm",
       name: "At-the-market program referenced in the latest periodic report",
@@ -279,7 +320,38 @@ function buildLiveAnalysis(args: {
   }
 
   const events: CapitalEvent[] = [];
-  const analysisAsOf = args.filings.find((filing) => /^10-[QK]/.test(filing.form))?.filed ?? utcToday();
+  const analysisAsOf =
+    args.filings.find((filing) => /^(10-[QK]|20-F|40-F|6-K)/.test(filing.form))?.filed ?? utcToday();
+  const interpreted = interpretFilings({
+    analysisAsOf,
+    reports: args.reports,
+    resale: args.resale,
+    shareCandidates: [
+      ...(cover ? [{ shares: cover.shares, asOf: cover.asOf, label: "Cover page" }] : []),
+      ...(args.sharesFact?.val
+        ? [{ shares: args.sharesFact.val, asOf: args.sharesFact.end ?? null, label: "Company facts" }]
+        : []),
+      ...(inline?.sharesOutstanding
+        ? [{ shares: inline.sharesOutstanding, asOf: inline.sharesAsOf, label: "Inline XBRL shares" }]
+        : []),
+    ],
+  });
+  if (interpreted.instruments.some((item) => item.resaleRegistration)) {
+    for (let index = instruments.length - 1; index >= 0; index -= 1) {
+      const item = instruments[index];
+      if (item.kind === "shelf" && item.remainingDollars == null && item.overhangShares == null && !item.resaleRegistration) {
+        instruments.splice(index, 1);
+      }
+    }
+  }
+  instruments.push(...interpreted.instruments);
+  events.push(...interpreted.events);
+  caveats.push(...interpreted.caveats);
+  const sharesOutstanding = interpreted.sharesOutstanding ?? cover?.shares ?? args.sharesFact?.val ?? null;
+  const sharesOutstandingAsOf =
+    interpreted.sharesOutstanding != null
+      ? interpreted.sharesOutstandingAsOf
+      : cover?.asOf ?? args.sharesFact?.end ?? null;
   for (const filing of args.filings) {
     const days = daysFrom(filing.filed, analysisAsOf);
     if (days == null || days < 0 || days > 800) continue;
@@ -338,27 +410,38 @@ function buildLiveAnalysis(args: {
       sic: args.identity.sic,
       sicDescription: args.identity.sicDescription,
       sharesOutstanding,
-      sharesOutstandingAsOf: cover?.asOf ?? args.sharesFact?.end ?? null,
+      sharesOutstandingAsOf,
       floatShares: null,
       authorizedShares,
       price: null,
       marketCap: null,
     },
     cash: {
-      asOf: args.cashFact?.end ?? null,
+      asOf: cashAsOf,
       totalCash,
       restrictedCash,
-      operatingCashFlow: args.operating?.row.val ?? null,
-      operatingCashFlowMonths: args.operating?.months ?? null,
+      operatingCashFlow,
+      operatingCashFlowMonths: operatingMonths,
       workingCapital: null,
       goingConcern,
       goingConcernNote: goingConcern
-        ? "The latest periodic report pairs substantial-doubt language with going concern."
+        ? "The latest periodic report pairs substantial-doubt or significant-doubt language with going concern."
         : null,
-      sourceLabel: args.cashFact
-        ? `EDGAR company facts${args.cashFact.form ? `, ${args.cashFact.form}` : ""}`
-        : "EDGAR submissions",
-      sourceUrl: args.filings.find((filing) => filing.form.startsWith("10-"))?.url ?? null,
+      sourceLabel: inline && cashAsOf === inline.asOf
+        ? `Inline XBRL${inline.sourceForm ? `, ${inline.sourceForm}` : ""}`
+        : args.cashFact
+          ? `EDGAR company facts${args.cashFact.form ? `, ${args.cashFact.form}` : ""}${currency === "CAD" ? ", CAD" : ""}`
+          : "EDGAR submissions",
+      sourceUrl:
+        (inline && cashAsOf === inline.asOf ? inline.sourceUrl : null) ??
+        args.filings.find((filing) => /^(10-[QK]|20-F|40-F|6-K)/.test(filing.form))?.url ??
+        null,
+      currency,
+      restrictedIncludedInTotal: !restrictedSeparate,
+      sourceForm:
+        inline && cashAsOf === inline.asOf
+          ? inline.sourceForm
+          : args.cashFact?.form ?? null,
     },
     instruments,
     events,
@@ -407,38 +490,135 @@ function listFilings(cik: string, submissions: Record<string, any> | null): Fili
   const seen = new Set(newest.map((filing) => filing.url));
   const extras: FilingLink[] = [];
   const formsKept = new Set<string>();
+  const keepOne = /^(20-F|40-F|10-K|10-Q|F-3|S-3|S-3ASR)$/;
   for (const filing of links) {
-    if (!SHELF_FORM.test(filing.form) || seen.has(filing.url)) continue;
+    if (seen.has(filing.url)) continue;
+    const shelf = SHELF_FORM.test(filing.form);
+    const periodic = keepOne.test(filing.form.replace(/\/A$/, ""));
+    if (!shelf && !periodic) continue;
     const key = filing.form.replace(/\/A$/, "");
     if (formsKept.has(key)) continue;
     formsKept.add(key);
     extras.push(filing);
-    if (extras.length >= 6) break;
+    if (extras.length >= 8) break;
   }
   return [...newest, ...extras];
 }
 
-async function loadRegistrationText(
+interface LoadedFiling {
+  form: string;
+  filed: string;
+  url: string;
+  text: string;
+}
+
+async function loadRegistrationFilings(
   cik: string,
   submissions: Record<string, any> | null,
-): Promise<string> {
+): Promise<LoadedFiling[]> {
   const recent = submissions?.filings?.recent;
-  if (!recent?.form) return "";
-  const wanted = ["S-3", "S-3ASR", "424B5"];
+  if (!recent?.form) return [];
+  const wanted = ["F-3", "S-3", "S-3ASR", "424B5"];
   const found = new Set<string>();
-  const chunks: string[] = [];
+  const filings: LoadedFiling[] = [];
   const count = recent.form.length as number;
   for (let index = 0; index < count && found.size < wanted.length; index += 1) {
     const form = String(recent.form[index] ?? "");
     if (!wanted.includes(form) || found.has(form)) continue;
     const accession = String(recent.accessionNumber[index] ?? "");
     const primary = String(recent.primaryDocument[index] ?? "");
+    const filed = String(recent.filingDate[index] ?? "");
     if (!accession || !primary) continue;
     found.add(form);
-    const html = await fetchText(archiveUrl(cik, accession, primary));
-    if (html) chunks.push(stripHtml(html).slice(0, 120_000));
+    const url = archiveUrl(cik, accession, primary);
+    const html = await fetchText(url);
+    if (!html) continue;
+    filings.push({ form, filed, url, text: stripHtml(html).slice(0, 120_000) });
   }
-  return chunks.join("\n");
+  return filings;
+}
+
+async function loadCurrentReports(
+  cik: string,
+  submissions: Record<string, any> | null,
+): Promise<CurrentReport[]> {
+  const recent = submissions?.filings?.recent;
+  if (!recent?.form) return [];
+  const targets: { filed: string; url: string }[] = [];
+  const count = recent.form.length as number;
+  for (let index = 0; index < count && targets.length < 18; index += 1) {
+    const form = String(recent.form[index] ?? "");
+    if (form !== "6-K" && form !== "8-K") continue;
+    const accession = String(recent.accessionNumber[index] ?? "");
+    const primary = String(recent.primaryDocument[index] ?? "");
+    const filed = String(recent.filingDate[index] ?? "");
+    if (!accession || !primary || !filed) continue;
+    targets.push({ filed, url: archiveUrl(cik, accession, primary) });
+  }
+  return mapPool(targets, 4, async (target) => {
+    const html = await fetchText(target.url);
+    let text = html ? stripHtml(html) : "";
+    const needsExhibit =
+      /exhibit 99\.1/i.test(text) &&
+      !/principal amount of/i.test(text) &&
+      !/reduced from\s+[\d,]+/i.test(text);
+    if (needsExhibit) {
+      const exhibit = await fetchText(target.url.replace(/[^/]+$/, "exhibit_99-1.htm"));
+      if (exhibit) text = `${text}\n${stripHtml(exhibit)}`;
+    }
+    return { filed: target.filed, url: target.url, text: text.slice(0, 80_000) };
+  });
+}
+
+async function loadInlineCash(
+  cik: string,
+  submissions: Record<string, any> | null,
+): Promise<(InlineCashFacts & { sourceUrl: string | null; sourceForm: string | null }) | null> {
+  const recent = submissions?.filings?.recent;
+  if (!recent?.form) return null;
+  const candidates: { form: string; accession: string; primary: string }[] = [];
+  const count = recent.form.length as number;
+  for (let index = 0; index < count && candidates.length < 8; index += 1) {
+    const form = String(recent.form[index] ?? "");
+    if (!/^(6-K|20-F|10-Q|10-K)$/.test(form)) continue;
+    const accession = String(recent.accessionNumber[index] ?? "");
+    const primary = String(recent.primaryDocument[index] ?? "");
+    if (!accession || !primary) continue;
+    candidates.push({ form, accession, primary });
+  }
+  let best: (InlineCashFacts & { sourceUrl: string | null; sourceForm: string | null }) | null = null;
+  for (const candidate of candidates) {
+    const index = await fetchJson(archiveUrl(cik, candidate.accession, "").replace(/\/$/, "/index.json")).catch(() => null);
+    const items = index?.directory?.item;
+    if (!Array.isArray(items)) continue;
+    const instance = items.find((item: { name?: string }) => String(item?.name ?? "").endsWith("_htm.xml"));
+    if (!instance?.name) continue;
+    const xml = await fetchText(archiveUrl(cik, candidate.accession, String(instance.name)));
+    if (!xml) continue;
+    const parsed = extractInlineCash(xml);
+    if (!parsed?.asOf || parsed.totalCash == null) continue;
+    const row = {
+      ...parsed,
+      sourceUrl: archiveUrl(cik, candidate.accession, candidate.primary),
+      sourceForm: candidate.form,
+    };
+    if (!best || (row.asOf ?? "") > (best.asOf ?? "")) best = row;
+  }
+  return best;
+}
+
+async function mapPool<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  async function run(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+  return results;
 }
 
 async function loadLatestNarrative(cik: string, submissions: Record<string, any> | null): Promise<string> {
@@ -460,15 +640,39 @@ async function loadLatestNarrative(cik: string, submissions: Record<string, any>
   return "";
 }
 
-function latestMonetary(facts: Record<string, any> | null, concepts: string[]): FactRow | null {
-  return latestFact(facts, "us-gaap", concepts, "USD");
+function latestMoney(
+  facts: Record<string, any> | null,
+  namespaces: string[],
+  concepts: string[],
+): { row: FactRow; currency: "USD" | "CAD"; source: "combined" | "plain" } | null {
+  const found: { row: FactRow; currency: "USD" | "CAD"; source: "combined" | "plain" }[] = [];
+  for (const namespace of namespaces) {
+    for (const currency of ["USD", "CAD"] as const) {
+      const row = latestFact(facts, namespace, concepts, currency);
+      if (!row) continue;
+      const combined = concepts.some((concept) => concept.startsWith("CashCashEquivalentsRestricted"));
+      found.push({ row, currency, source: combined ? "combined" : "plain" });
+    }
+  }
+  found.sort((a, b) => compareFacts(a.row, b.row));
+  return found[0] ?? null;
+}
+
+function newerMoney(
+  combined: { row: FactRow; currency: "USD" | "CAD"; source: "combined" | "plain" } | null,
+  plain: { row: FactRow; currency: "USD" | "CAD"; source: "combined" | "plain" } | null,
+): { row: FactRow; currency: "USD" | "CAD"; source: "combined" | "plain" } | null {
+  if (!combined) return plain;
+  if (!plain) return combined;
+  return compareFacts(combined.row, plain.row) <= 0 ? combined : plain;
 }
 
 function latestShares(facts: Record<string, any> | null, concepts: string[]): FactRow | null {
-  return (
-    latestPositiveShares(facts, "dei", concepts) ??
-    latestPositiveShares(facts, "us-gaap", concepts)
-  );
+  const rows = ["dei", "us-gaap", "ifrs-full"]
+    .map((namespace) => latestPositiveShares(facts, namespace, concepts))
+    .filter((row): row is FactRow => row != null);
+  rows.sort((a, b) => compareFacts(a, b));
+  return rows[0] ?? null;
 }
 
 /** A zero share fact is a bad tag, not a company with no stock. Keep the newest positive count. */
@@ -486,7 +690,12 @@ function latestFlow(
   facts: Record<string, any> | null,
   concepts: string[],
 ): { row: FactRow; months: number } | null {
-  const rows = collectFacts(facts, "us-gaap", concepts, "USD").filter((row) => {
+  const rows = [
+    ...collectFacts(facts, "us-gaap", concepts, "USD"),
+    ...collectFacts(facts, "us-gaap", concepts, "CAD"),
+    ...collectFacts(facts, "ifrs-full", concepts, "USD"),
+    ...collectFacts(facts, "ifrs-full", concepts, "CAD"),
+  ].filter((row) => {
     const months = periodMonths(row.start, row.end);
     return months != null && months >= 2.5 && months <= 13;
   });
