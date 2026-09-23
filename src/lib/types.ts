@@ -62,6 +62,17 @@ export interface Instrument {
   registeredDollars?: number | null;
   /** ATM sales agent or ELOC counterparty, when the filing names one. */
   agent?: string | null;
+  /**
+   * Conversion price moves with VWAP or another trading-price formula.
+   * A fixed conversion price stays false.
+   */
+  variableConversion?: boolean;
+  /** The note is satisfied by issuing shares. Cash repayment is not available. */
+  shareSettled?: boolean;
+  /** F-3/S-3 (or S-1) resale registration for a selling shareholder, not a primary shelf. */
+  resaleRegistration?: boolean;
+  /** Issue or closing date (YYYY-MM-DD) when the filing states one. */
+  issuedOn?: string | null;
 }
 
 export interface EvidenceInput {
@@ -102,6 +113,16 @@ export interface CashFacts {
   goingConcernNote: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  /** Filing currency. Null means US dollars. Amounts are not converted. */
+  currency?: "USD" | "CAD" | null;
+  /**
+   * True when totalCash already includes restricted cash (US-GAAP combined line).
+   * False when the filing presents cash equivalents and restricted cash as separate lines.
+   * Omitted means true, so existing snapshots keep subtracting restricted cash.
+   */
+  restrictedIncludedInTotal?: boolean;
+  /** Form type of the cash source, when it is not a 10-Q or 10-K. */
+  sourceForm?: string | null;
 }
 
 export interface CompanyProfile {

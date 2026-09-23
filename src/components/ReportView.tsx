@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDate, formatMonths, formatPrice, formatShares, formatUsd, formatUsdExact, kindLabel } from "@/lib/format";
+import { formatDate, formatMoney, formatMonths, formatPrice, formatShares, formatUsd, kindLabel } from "@/lib/format";
 import type { ScoreCard, TickerReport } from "@/lib/types";
 
 export function ReportView({ report }: { report: TickerReport }) {
@@ -69,22 +69,27 @@ export function ReportView({ report }: { report: TickerReport }) {
             <span className="text-xs text-muted">{formatDate(cash.asOf)}</span>
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-            <CashRow label="Cash, equivalents, restricted" value={formatUsdExact(cash.totalCash)} />
-            <CashRow label="Restricted" value={formatUsdExact(cash.restrictedCash)} />
-            <CashRow label="Unrestricted" value={formatUsdExact(cash.unrestrictedCash)} />
-            <CashRow label="Working capital" value={formatUsdExact(cash.workingCapital)} />
+            <CashRow label="Cash, equivalents, restricted" value={formatMoney(cash.totalCash, cash.currency)} />
+            <CashRow label="Restricted" value={formatMoney(cash.restrictedCash, cash.currency)} />
+            <CashRow label="Unrestricted" value={formatMoney(cash.unrestrictedCash, cash.currency)} />
+            <CashRow label="Working capital" value={formatMoney(cash.workingCapital, cash.currency)} />
             <CashRow
               label="Operating cash flow"
               value={
                 cash.operatingCashFlow == null
                   ? "—"
-                  : `${formatUsdExact(cash.operatingCashFlow)}${cash.operatingCashFlowMonths ? ` / ${cash.operatingCashFlowMonths} mo` : ""}`
+                  : `${formatMoney(cash.operatingCashFlow, cash.currency)}${cash.operatingCashFlowMonths ? ` / ${cash.operatingCashFlowMonths} mo` : ""}`
               }
             />
-            <CashRow label="Implied monthly burn" value={formatUsdExact(cash.monthlyBurn)} />
+            <CashRow label="Implied monthly burn" value={formatMoney(cash.monthlyBurn, cash.currency)} />
             <CashRow label="Runway" value={formatMonths(cash.runwayMonths)} />
             <CashRow label="Going concern" value={cash.goingConcern ? "Flagged" : "Not flagged"} />
           </dl>
+          {cash.currency === "CAD" ? (
+            <p className="mt-4 text-sm leading-6 text-muted">
+              Cash amounts are Canadian dollars as reported. They are not converted to US dollars.
+            </p>
+          ) : null}
           {cash.goingConcernNote ? (
             <p className="mt-4 text-sm leading-6 text-muted">{cash.goingConcernNote}</p>
           ) : null}

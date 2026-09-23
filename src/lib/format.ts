@@ -18,6 +18,17 @@ export function formatUsdExact(value: number | null | undefined): string {
   }).format(value);
 }
 
+/** Filing currency, with no FX conversion. CAD is shown as C$. */
+export function formatMoney(value: number | null | undefined, currency?: string | null): string {
+  if (currency === "CAD") {
+    if (value == null || !Number.isFinite(value)) return "—";
+    const sign = value < 0 ? "−" : "";
+    const formatted = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.abs(value));
+    return `${sign}C$${formatted}`;
+  }
+  return formatUsdExact(value);
+}
+
 export function formatShares(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
